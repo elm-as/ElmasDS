@@ -1,0 +1,23 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,-readability-magic-numbers,-cppcoreguidelines-avoid-magic-numbers,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length
+WarningsAsErrors: ''
+HeaderFilterRegex: '^src/.*'
+CheckOptions:
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 15
+  - key: readability-function-size.LineThreshold
+    value: 60
+  - key: readability-function-size.ParameterThreshold
+    value: 3
+  - key: readability-function-size.NestingThreshold
+    value: 3
+...

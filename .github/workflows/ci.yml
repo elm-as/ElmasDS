@@ -1,0 +1,47 @@
+name: ElmasDS CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows MSVC
+            os: windows-latest
+            preset: windows-msvc-debug
+            build-flags: --config Debug
+          - name: Linux GCC
+            os: ubuntu-latest
+            preset: linux-gcc-debug
+            build-flags: ''
+          - name: Linux Clang
+            os: ubuntu-latest
+            preset: linux-clang-debug
+            build-flags: ''
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libgl-dev libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} ${{ matrix.build-flags }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}

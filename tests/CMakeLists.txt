@@ -1,0 +1,44 @@
+add_executable(
+    elmasds_tests
+    unit/test_bit_operations.cpp
+    unit/test_event_scheduler.cpp
+    unit/test_display_layout.cpp
+    cpu/test_register_bank.cpp
+    cpu/test_condition_codes.cpp
+    cpu/test_barrel_shifter.cpp
+    cpu/test_arm_alu_and_dp.cpp
+    cpu/test_arm_branch_and_memory.cpp
+    cpu/test_thumb_instructions.cpp
+    cpu/test_arm_core_hooks.cpp
+    cpu/test_arm7_tdmi.cpp
+        cpu/test_cp15_and_tcm.cpp
+    cpu/test_arm946_es.cpp
+    memory/test_memory_regions.cpp
+    memory/test_vram_and_bus.cpp
+    hardware/test_interrupt_controller.cpp
+    hardware/test_timers.cpp
+    hardware/test_dma_controller.cpp
+    hardware/test_ipc_controller.cpp
+    hardware/test_spi_and_rtc.cpp
+    hardware/test_cartridge.cpp
+    storage/test_rom_and_save.cpp
+    storage/test_save_states.cpp
+    integration/test_direct_boot_and_dual_cpu.cpp
+    gpu/test_gpu_2d.cpp
+    gpu/test_gpu_3d.cpp
+    input/test_input_and_hle_bios.cpp
+    audio/test_audio_engine.cpp
+)
+
+target_link_libraries(
+    elmasds_tests
+    PRIVATE
+        elmasds_core
+        GTest::gtest_main
+)
+
+elmasds_apply_warnings(elmasds_tests)
+
+include(GoogleTest)
+gtest_discover_tests(elmasds_tests)
+include(e2e/e2e_tests.cmake)

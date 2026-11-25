@@ -1,0 +1,86 @@
+add_library(
+    elmasds_core
+    STATIC
+        primitives/diagnostic_log.cpp
+        core/emulator.cpp
+        core/scheduler/event_scheduler.cpp
+        cpu/arm_architecture/register_bank.cpp
+        cpu/arm_architecture/barrel_shifter.cpp
+        cpu/arm_architecture/exception_vector.cpp
+        cpu/arm_architecture/cpu_step.cpp
+        cpu/arm_instructions/alu_operations.cpp
+        cpu/arm_instructions/arm_data_processing.cpp
+        cpu/arm_instructions/arm_branch_and_swap.cpp
+        cpu/arm_instructions/arm_memory_transfer.cpp
+        cpu/arm_instructions/arm_executor.cpp
+        cpu/thumb_instructions/thumb_alu_and_branch.cpp
+        cpu/thumb_instructions/thumb_memory_transfer.cpp
+        cpu/thumb_instructions/thumb_executor.cpp
+        cpu/arm7/arm7_tdmi.cpp
+        cpu/arm9/cp15_system_control.cpp
+        cpu/arm9/tcm_bus_router.cpp
+        cpu/arm9/arm946_es.cpp
+        cpu/bios_hle/hle_bios.cpp
+        memory/main_ram/main_ram.cpp
+        memory/shared_wram/shared_wram.cpp
+        memory/arm7_wram/arm7_wram.cpp
+        memory/palette/palette_ram.cpp
+        memory/oam/oam_ram.cpp
+        memory/bios/bios_memory.cpp
+        memory/vram/vram_controller.cpp
+        memory/mmio/mmio_router.cpp
+        memory/memory_bus/memory_system.cpp
+        memory/memory_bus/arm9_memory_bus.cpp
+        memory/memory_bus/arm7_memory_bus.cpp
+        hardware/interrupts/interrupt_controller.cpp
+        hardware/interrupts/system_control_mmio.cpp
+        hardware/timers/timer_controller.cpp
+        hardware/dma/dma_controller.cpp
+        hardware/ipc/ipc_controller.cpp
+        hardware/spi/spi_devices.cpp
+        hardware/spi/spi_controller.cpp
+        hardware/rtc/rtc_controller.cpp
+        hardware/cartridge/cartridge_controller.cpp
+        storage/rom_loader/nds_rom.cpp
+        storage/save_manager/save_memory.cpp
+        storage/firmware/system_image_loader.cpp
+        storage/save_states/save_state.cpp
+        gpu/registers/gpu_registers.cpp
+        gpu/registers/display_status_mmio.cpp
+        gpu/engines_2d/engine_2d.cpp
+        gpu/engines_2d/sprite_renderer.cpp
+        gpu/engine_3d/engine_3d.cpp
+        gpu/engine_3d/matrix_commands_3d.cpp
+        gpu/engine_3d/rasterizer_3d.cpp
+        gpu/gpu.cpp
+        input/keypad_mmio.cpp
+        input/input_mapping.cpp
+        audio/audio_engine.cpp
+        frontend/window/display_layout.cpp
+)
+
+target_include_directories(
+    elmasds_core
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+elmasds_apply_warnings(elmasds_core)
+
+if(ELMASDS_BUILD_FRONTEND)
+    add_executable(
+        elmasds
+        frontend/application/main.cpp
+        frontend/renderer/gl_screen_renderer.cpp
+    )
+
+    target_link_libraries(
+        elmasds
+        PRIVATE
+            elmasds_core
+            SDL3::SDL3
+            OpenGL::GL
+    )
+
+    elmasds_apply_warnings(elmasds)
+endif()
