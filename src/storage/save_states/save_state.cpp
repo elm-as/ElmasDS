@@ -12,6 +12,7 @@ namespace {
 
 class BinaryWriter final {
 public:
+    BinaryWriter() { buf_.reserve(5U * 1024U * 1024U); }
     void write_u8(u8 v) { buf_.push_back(v); }
     void write_u16(u16 v) {
         write_u8(static_cast<u8>(v & 0xFFU));

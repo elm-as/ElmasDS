@@ -35,6 +35,7 @@ DmaController::DmaController(interrupts::CpuKind cpu, cpu::CpuBusInterface& bus,
 void DmaController::reset() noexcept {
     channels_.fill(DmaChannel{});
     fill_registers_.fill(0U);
+    in_progress_.fill(false);
     vblank_active_ = false;
 }
 
@@ -250,7 +251,8 @@ void DmaController::write_control(std::size_t index, u16 raw_value) {
         return;
     }
     latch_channel(index);
-    if (ch.start_timing(cpu_, index) == DmaTrigger::Immediate) {
+    const DmaTrigger timing = ch.start_timing(cpu_, index);
+    if (timing == DmaTrigger::Immediate || timing == DmaTrigger::GeometryFifo) {
         execute_transfer(index);
     }
 }
@@ -263,13 +265,20 @@ void DmaController::latch_channel(std::size_t index) noexcept {
 }
 
 void DmaController::execute_transfer(std::size_t index) {
+    if (in_progress_[index]) {
+        return;
+    }
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Dma);
+    in_progress_[index] = true;
     if (channels_[index].src_ctrl() == 3U) {
         // Source address control = 3 is prohibited on NDS; treat as a safe no-op.
         finish_transfer(index, false);
+        in_progress_[index] = false;
         return;
     }
     transfer_units(index);
     finish_transfer(index, true);
+    in_progress_[index] = false;
 }
 
 void DmaController::transfer_units(std::size_t index) {
@@ -300,7 +309,7 @@ void DmaController::transfer_units(std::size_t index) {
 void DmaController::finish_transfer(std::size_t index, bool raise_irq) noexcept {
     DmaChannel& ch = channels_[index];
     const DmaTrigger timing = ch.start_timing(cpu_, index);
-    if (ch.is_repeat() && timing != DmaTrigger::Immediate) {
+    if (ch.is_repeat() && timing != DmaTrigger::Immediate && timing != DmaTrigger::GeometryFifo) {
         ch.internal_count = ch.compute_word_count(cpu_, index);
         if (ch.dest_ctrl() == 3U) {
             ch.internal_dad = ch.dad & dad_mask(cpu_, index);

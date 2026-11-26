@@ -29,6 +29,17 @@ u64 Arm7Tdmi::run_cycles(u32 cycle_budget) {
     return elapsed;
 }
 
+TickCount Arm7Tdmi::run_slice_ticks(TickCount tick_budget) {
+    while (tick_budget >= elmasds::kArm7TicksPerCycle) {
+        if (can_skip_halt()) {
+            return 0ULL;
+        }
+        const TickCount used = static_cast<TickCount>(step()) * elmasds::kArm7TicksPerCycle;
+        tick_budget = (used >= tick_budget) ? 0ULL : (tick_budget - used);
+    }
+    return tick_budget;
+}
+
 void Arm7Tdmi::set_irq_line(bool asserted) noexcept {
     interrupts_.irq = asserted;
 }

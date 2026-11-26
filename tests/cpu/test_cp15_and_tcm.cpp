@@ -295,33 +295,24 @@ TEST(TcmBusRouterTest, HonorsLoadModeForDtcmAndItcm) {
 
 TEST(TcmBusRouterTest, MirrorsPhysicalStorageAndPreventsHighAddressWraparound) {
     SpyExternalBus external;
-    external.write32(0x027C1000U, 0x77777777U);
-    external.write32(0x00000000U, 0x88888888U);
+    external.write32(0x027C1000U, 0x77777777U); external.write32(0x00000000U, 0x88888888U);
     external.write_count = 0U;
-
-    Cp15SystemControl cp15;
-    cp15.reset(false);
+    Cp15SystemControl cp15; cp15.reset(false);
     TcmBusRouter router(external, cp15);
-
     // Sub-physical 4 KiB window (size_field=3): offset +0x1000 misses to external bus.
     configure_tcm_region(cp15, false, TcmWindow{0x027C0000U, 3U, true, false});
     EXPECT_EQ(router.read32(0x027C1000U), 0x77777777U);
-
     // 64 KiB virtual window (size_field=7) over 16 KiB DTCM / 32 KiB ITCM mirrors cleanly.
     configure_tcm_region(cp15, false, TcmWindow{0x027C0000U, 7U, true, false});
     router.write32(0x027C0010U, 0x12345678U);
     EXPECT_EQ(router.read32(0x027C4010U), 0x12345678U);
-
     configure_tcm_region(cp15, true, TcmWindow{0x01000000U, 7U, true, false});
     router.write32(0x01000020U, 0x9ABCDEF0U);
     EXPECT_EQ(router.fetch32(0x01008020U), 0x9ABCDEF0U);
-
     // High-address wraparound safety: 8 KiB DTCM/ITCM at 0xFFFFF000 stops at 4 GiB.
     configure_tcm_region(cp15, false, TcmWindow{0xFFFFF000U, 4U, true, false});
     configure_tcm_region(cp15, true, TcmWindow{0xFFFFF000U, 4U, true, false});
-    external.read_count = 0U;
-    external.write_count = 0U;
-    external.fetch32_count = 0U;
+    external.read_count = 0U; external.write_count = 0U; external.fetch32_count = 0U;
     router.write32(0xFFFFFFFCU, 0x55AA55AAU);
     router.write8(0xFFFFFFFFU, 0xABU);
     EXPECT_EQ(router.read32(0xFFFFFFFCU), 0xABAA55AAU);

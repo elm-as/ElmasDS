@@ -35,6 +35,13 @@ void Gpu::register_mmio(memory::MmioRouter& arm9_mmio, memory::MmioRouter& arm7_
     arm7_mmio.register_device({kDispStatMmioStart, kDispStatMmioEnd, &dispstat_arm7_});
 }
 
+void Gpu::set_profiler(primitives::PerformanceProfiler* profiler) noexcept {
+    profiler_ = profiler;
+    engine_a_.set_profiler(profiler);
+    engine_b_.set_profiler(profiler);
+    engine_3d_.set_profiler(profiler);
+}
+
 void Gpu::reset() {
     scheduler_.cancel_by_type(core::EventType::ScanlineHBlank);
     scheduler_.cancel_by_type(core::EventType::ScanlineHDraw);
@@ -93,6 +100,7 @@ void Gpu::on_hblank_start(TickCount late_ticks) {
     if (vcount_ < kScreenHeight) {
         arm9_dma_.trigger_hblank();
     }
+    engine_3d_.check_fifo_irq_and_dma();
 
     schedule_hdraw(late_ticks);
 }
@@ -147,6 +155,8 @@ void Gpu::render_current_scanline() {
     auto line_b = powcnt1_.display_swap() ? bot_row : top_row;
 
     if (powcnt1_.engine_a_enabled()) {
+        primitives::ScopedProfile profile_a(profiler_, primitives::ProfileCategory::Gpu2dEngineA);
+        if (profiler_ != nullptr && profiler_->is_enabled()) { profiler_->add_scanline_rendered(); }
         if ((regs_a_.dispcnt() & (1U << 3U)) != 0U) {
             engine_a_.set_line_3d_buffer(engine_3d_.scanline(vcount_));
         }
@@ -156,6 +166,8 @@ void Gpu::render_current_scanline() {
     }
 
     if (powcnt1_.engine_b_enabled()) {
+        primitives::ScopedProfile profile_b(profiler_, primitives::ProfileCategory::Gpu2dEngineB);
+        if (profiler_ != nullptr && profiler_->is_enabled()) { profiler_->add_scanline_rendered(); }
         engine_b_.render_scanline(vcount_, line_b);
     } else {
         std::fill(line_b.begin(), line_b.end(), 0xFFFFFFFFU);

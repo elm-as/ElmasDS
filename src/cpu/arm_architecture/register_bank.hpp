@@ -56,8 +56,12 @@ public:
      */
     void reset(Address reset_pc = 0U) noexcept;
 
-    [[nodiscard]] u32 read(RegisterIndex reg) const noexcept;
-    void write(RegisterIndex reg, u32 value) noexcept;
+    [[nodiscard]] u32 read(RegisterIndex reg) const noexcept {
+        return active_regs_[static_cast<std::size_t>(reg)];
+    }
+    void write(RegisterIndex reg, u32 value) noexcept {
+        active_regs_[static_cast<std::size_t>(reg)] = value;
+    }
 
     /**
      * @brief Reads a register from the User/System bank regardless of current CPSR mode.
@@ -69,16 +73,23 @@ public:
      */
     void write_user(RegisterIndex reg, u32 value) noexcept;
 
-    [[nodiscard]] StatusRegister cpsr() const noexcept;
-    void set_cpsr(StatusRegister next_cpsr) noexcept;
+    [[nodiscard]] StatusRegister cpsr() const noexcept { return cpsr_; }
+    void set_cpsr(StatusRegister next_cpsr) noexcept {
+        if (next_cpsr.mode() != cpsr_.mode()) {
+            sync_bank(mode_to_bank(next_cpsr.mode()));
+        }
+        cpsr_ = next_cpsr;
+    }
 
     [[nodiscard]] StatusRegister spsr() const noexcept;
     void set_spsr(StatusRegister next_spsr) noexcept;
 
-    [[nodiscard]] CpuMode current_mode() const noexcept;
-    void switch_mode(CpuMode next_mode) noexcept;
+    [[nodiscard]] CpuMode current_mode() const noexcept { return cpsr_.mode(); }
+    void switch_mode(CpuMode next_mode) noexcept {
+        set_cpsr(cpsr_.with_mode(next_mode));
+    }
 
-    [[nodiscard]] ArmArchitecture architecture() const noexcept;
+    [[nodiscard]] ArmArchitecture architecture() const noexcept { return architecture_; }
 
     [[nodiscard]] u32 read_bank_register(RegisterIndex reg, ModeBank bank) const noexcept {
         return read_for_bank(reg, bank);
@@ -94,16 +105,18 @@ public:
     }
 
 private:
+    void sync_bank(ModeBank next_bank) noexcept;
     [[nodiscard]] u32 read_for_bank(RegisterIndex reg, ModeBank bank) const noexcept;
     void write_for_bank(RegisterIndex reg, ModeBank bank, u32 value) noexcept;
 
     ArmArchitecture architecture_;
+    std::array<u32, 16U> active_regs_{};
+    ModeBank active_bank_ = ModeBank::Supervisor;
     std::array<u32, 8> r0_to_r7_{};
     std::array<u32, 5> r8_to_r12_user_{};
     std::array<u32, 5> r8_to_r12_fiq_{};
     std::array<u32, kBankCount> sp_banked_{};
     std::array<u32, kBankCount> lr_banked_{};
-    u32 pc_ = 0;
     StatusRegister cpsr_{};
     std::array<StatusRegister, kSpsrCount> spsr_banked_{};
 };

@@ -3,6 +3,7 @@
 #include "gpu/registers/gpu_registers.hpp"
 #include "memory/memory_bus/memory_system.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -23,6 +24,7 @@ struct ScanlineWorkBuffers {
     std::array<bool, kScreenWidth> obj_semi_transparent{};
     std::array<bool, kScreenWidth> obj_window{};
     std::array<u8, kScreenWidth> win_mask{};
+    bool has_semi_obj = false;
 
     void clear_for_line() noexcept;
 };
@@ -44,6 +46,7 @@ public:
      * @brief Supplies an optional 256-pixel 3D scanline (`ARGB8888`, alpha > 0 = opaque) for BG0.
      */
     void set_line_3d_buffer(std::span<const u32> line_3d) noexcept;
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
 
     /**
      * @brief Renders scanline `line` (`0..191`) into `out_line` (`256` `ARGB8888` pixels).
@@ -64,7 +67,9 @@ private:
     void render_sprites_line(u16 line);
     void evaluate_sprite(std::size_t obj_index, u16 line);
     void compute_window_masks(u16 line) noexcept;
-    [[nodiscard]] u32 composite_pixel(std::size_t x, u32 backdrop) const noexcept;
+    void composite_scanline(std::span<u32, kScreenWidth> out_line,
+                            u32 backdrop,
+                            u8 active_bgs) const noexcept;
 
     [[nodiscard]] u16 read_vram16(Address offset) const noexcept;
     [[nodiscard]] u8 read_vram8(Address offset) const noexcept;
@@ -77,6 +82,7 @@ private:
     const memory::MemorySystem& memory_;
     std::span<const u32> line_3d_{};
     ScanlineWorkBuffers work_{};
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::gpu

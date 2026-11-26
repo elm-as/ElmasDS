@@ -117,18 +117,24 @@ public:
 private:
     enum class State : u8 {
         Idle = 0,
+        IrReadId,
         ReadStatus,
+        WriteStatus,
         ReadJedecId,
         ReadAddress,
+        FastReadAddress,
+        FastReadDummy,
         ReadData,
         WriteAddress,
         WriteData,
         PageEraseAddress,
+        SubsectorEraseAddress,
+        SectorEraseAddress,
     };
 
     [[nodiscard]] u8 address_byte_count() const noexcept;
     [[nodiscard]] u8 handle_command(u8 command) noexcept;
-    void erase_page(u32 address) noexcept;
+    void erase_region(u32 base_mask, std::size_t region_size) noexcept;
 
     SaveType type_ = SaveType::None;
     std::vector<u8> storage_;

@@ -125,6 +125,38 @@ TEST(SaveMemoryTest, FlashAndEepromSpiRoundTripAndDeferredDiskFlush) {
     std::filesystem::remove(temp_path, ec);
 }
 
+TEST(SaveMemoryTest, SupportsNtr031InfraredIdAndFlashPassthrough) {
+    save_manager::SaveMemory save(save_manager::SaveType::Flash512KB);
+
+    // Command 0x08 queries NTR-031 IR status/ID (`0xAA` until CS release).
+    EXPECT_EQ(save.transfer(0x08U, true), 0x00U);
+    EXPECT_EQ(save.transfer(0x00U, false), 0xAAU);
+
+    // Command 0x00 passes subsequent bytes in the same CS session directly to Flash (JEDEC ID).
+    EXPECT_EQ(save.transfer(0x00U, true), 0x00U);
+    EXPECT_EQ(save.transfer(0x9FU, true), 0x00U);
+    EXPECT_EQ(save.transfer(0x00U, true), 0x20U);
+    EXPECT_EQ(save.transfer(0x00U, true), 0x40U);
+    EXPECT_EQ(save.transfer(0x00U, false), 0x13U);
+
+    // Flash WREN -> Page Write -> Read through NTR-031 0x00 passthrough.
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x06U, false));
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x0AU, true));
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x02U, true));
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x5AU, false));
+
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x03U, true));
+    static_cast<void>(save.transfer(0x00U, true));
+    static_cast<void>(save.transfer(0x02U, true));
+    static_cast<void>(save.transfer(0x00U, true));
+    EXPECT_EQ(save.transfer(0x00U, false), 0x5AU);
+}
+
 TEST(SystemImageLoaderTest, ValidatesBiosSizesAndCreatesDefaultFirmware) {
     memory::BiosMemory bios9(memory::BiosMemory::kArm9BiosSize);
     memory::BiosMemory bios7(memory::BiosMemory::kArm7BiosSize, true);

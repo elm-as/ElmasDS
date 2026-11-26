@@ -1,40 +1,38 @@
 #include "cpu/arm9/tcm_bus_router.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <span>
 
 namespace elmasds::cpu {
 namespace {
 
 struct TcmReadView {
-    TcmRegionConfig config{};
-    std::span<const u8> storage{};
+    const TcmRegionConfig& config;
+    std::span<const u8> storage;
 };
 
 struct TcmWriteView {
-    TcmRegionConfig config{};
-    std::span<u8> storage{};
+    const TcmRegionConfig& config;
+    std::span<u8> storage;
 };
 
-/**
- * @brief Validates in 64-bit arithmetic that `[address, address + access_size)`
- *        lies within the clamped 32-bit `region` window.
- */
-[[nodiscard]] bool contains_range(const TcmRegionConfig& region,
-                                  Address address,
-                                  u64 access_size) noexcept {
-    if (!region.enabled || region.virtual_size_bytes == 0ULL) {
-        return false;
-    }
-    const u64 addr = static_cast<u64>(address);
-    const u64 base = static_cast<u64>(region.base_address);
-    const u64 region_end = std::min<u64>(base + region.virtual_size_bytes, 0x100000000ULL);
-    return (addr >= base) && ((addr + access_size) <= region_end);
+[[nodiscard]] inline bool contains_range(const TcmRegionConfig& region,
+                                         Address address,
+                                         u64 access_size) noexcept {
+    return region.enabled && (static_cast<u64>(address) >= region.base_address) &&
+           ((static_cast<u64>(address) + access_size) <= region.end_address);
 }
 
 template <typename T>
-[[nodiscard]] T read_tcm_le(std::span<const u8> storage, u64 offset) noexcept {
+[[nodiscard]] inline T read_tcm_le(std::span<const u8> storage, u64 offset) noexcept {
     const u64 mask = static_cast<u64>(storage.size() - 1U);
+    const std::size_t masked = static_cast<std::size_t>(offset & mask);
+    if (masked + sizeof(T) <= storage.size()) {
+        T val{};
+        std::memcpy(&val, storage.data() + masked, sizeof(T));
+        return val;
+    }
     u32 assembled = 0U;
     for (u64 i = 0U; i < sizeof(T); ++i) {
         const auto index = static_cast<std::size_t>((offset + i) & mask);
@@ -44,13 +42,32 @@ template <typename T>
 }
 
 template <typename T>
-void write_tcm_le(std::span<u8> storage, u64 offset, T value) noexcept {
+inline void write_tcm_le(std::span<u8> storage, u64 offset, T value) noexcept {
     const u64 mask = static_cast<u64>(storage.size() - 1U);
+    const std::size_t masked = static_cast<std::size_t>(offset & mask);
+    if (masked + sizeof(T) <= storage.size()) {
+        std::memcpy(storage.data() + masked, &value, sizeof(T));
+        return;
+    }
     const u32 raw = static_cast<u32>(value);
     for (u64 i = 0U; i < sizeof(T); ++i) {
         const auto index = static_cast<std::size_t>((offset + i) & mask);
         storage[index] = static_cast<u8>((raw >> (i * 8U)) & 0xFFU);
     }
+}
+
+template <typename T>
+[[nodiscard]] inline T read_main_ram_le(const u8* ram, Address address) noexcept {
+    constexpr Address kMask = static_cast<Address>(0x3FFFFFU & ~(sizeof(T) - 1U));
+    T val{};
+    std::memcpy(&val, ram + (address & kMask), sizeof(T));
+    return val;
+}
+
+template <typename T>
+inline void write_main_ram_le(u8* ram, Address address, T value) noexcept {
+    constexpr Address kMask = static_cast<Address>(0x3FFFFFU & ~(sizeof(T) - 1U));
+    std::memcpy(ram + (address & kMask), &value, sizeof(T));
 }
 
 template <typename T>
@@ -84,67 +101,102 @@ void TcmBusRouter::reset() noexcept {
 }
 
 u8 TcmBusRouter::read8(Address address) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     u8 value = 0U;
     if (try_read_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_read_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
         return value;
     }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        return read_main_ram_le<u8>(main_ram_, address);
+    }
     return external_bus_.read8(address);
 }
 
 u16 TcmBusRouter::read16(Address address) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     u16 value = 0U;
     if (try_read_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_read_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
         return value;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        return read_main_ram_le<u16>(main_ram_, address);
     }
     return external_bus_.read16(address);
 }
 
 u32 TcmBusRouter::read32(Address address) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     u32 value = 0U;
     if (try_read_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_read_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
         return value;
     }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        return read_main_ram_le<u32>(main_ram_, address);
+    }
     return external_bus_.read32(address);
 }
 
 u16 TcmBusRouter::fetch16(Address address) {
+    primitives::ScopedBusSample bus_sample(profiler_);
     u16 value = 0U;
     if (try_read_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
         return value;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        return read_main_ram_le<u16>(main_ram_, address);
     }
     return external_bus_.fetch16(address);
 }
 
 u32 TcmBusRouter::fetch32(Address address) {
+    primitives::ScopedBusSample bus_sample(profiler_);
     u32 value = 0U;
     if (try_read_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
         return value;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        return read_main_ram_le<u32>(main_ram_, address);
     }
     return external_bus_.fetch32(address);
 }
 
 void TcmBusRouter::write8(Address address, u8 value) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     if (try_write_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_write_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
+        return;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        write_main_ram_le<u8>(main_ram_, address, value);
         return;
     }
     external_bus_.write8(address, value);
 }
 
 void TcmBusRouter::write16(Address address, u16 value) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     if (try_write_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_write_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
+        return;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        write_main_ram_le<u16>(main_ram_, address, value);
         return;
     }
     external_bus_.write16(address, value);
 }
 
 void TcmBusRouter::write32(Address address, u32 value) {
+    primitives::ScopedBusSample bus_sample((address >> 24U) != 0x04U ? profiler_ : nullptr);
     if (try_write_tcm({cp15_.dtcm_config(), dtcm_}, address, value) ||
         try_write_tcm({cp15_.itcm_config(), itcm_}, address, value)) {
+        return;
+    }
+    if (main_ram_ != nullptr && (address >> 24U) == 0x02U) {
+        write_main_ram_le<u32>(main_ram_, address, value);
         return;
     }
     external_bus_.write32(address, value);

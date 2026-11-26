@@ -1,10 +1,12 @@
 #pragma once
 
 #include "cpu/arm_architecture/coprocessor_interface.hpp"
+#include "primitives/bit_operations.hpp"
 #include "primitives/fixed_width_types.hpp"
 
 #include <array>
 #include <optional>
+#include <utility>
 
 namespace elmasds::cpu {
 
@@ -16,6 +18,7 @@ struct TcmRegionConfig {
     bool load_mode = false;
     Address base_address = 0U;
     u64 virtual_size_bytes = 0ULL;
+    u64 end_address = 0ULL;
 };
 
 /**
@@ -72,22 +75,26 @@ public:
     /**
      * @brief Returns true when CP15 C1 bit 13 (`HIVECS`) routes vectors to `0xFFFF0000`.
      */
-    [[nodiscard]] bool high_vectors() const noexcept;
+    [[nodiscard]] bool high_vectors() const noexcept {
+        return bits::test_bit(control_register_, kBitHivects);
+    }
 
     /**
-     * @brief Decodes the live DTCM region configuration from CP15 `c1` and `c9, c1, 0`.
+     * @brief Returns the cached DTCM region configuration from CP15 `c1` and `c9, c1, 0`.
      */
-    [[nodiscard]] TcmRegionConfig dtcm_config() const noexcept;
+    [[nodiscard]] const TcmRegionConfig& dtcm_config() const noexcept { return dtcm_cfg_; }
 
     /**
-     * @brief Decodes the live ITCM region configuration from CP15 `c1` and `c9, c1, 1`.
+     * @brief Returns the cached ITCM region configuration from CP15 `c1` and `c9, c1, 1`.
      */
-    [[nodiscard]] TcmRegionConfig itcm_config() const noexcept;
+    [[nodiscard]] const TcmRegionConfig& itcm_config() const noexcept { return itcm_cfg_; }
 
     /**
      * @brief Returns and clears any pending `Wait for Interrupt` request from `MCR c7, c0, 4`.
      */
-    [[nodiscard]] bool consume_wfi_request() noexcept;
+    [[nodiscard]] bool consume_wfi_request() noexcept {
+        return std::exchange(wfi_requested_, false);
+    }
 
     [[nodiscard]] u32 control_register() const noexcept { return control_register_; }
     [[nodiscard]] u32 dtcm_register() const noexcept { return dtcm_register_; }
@@ -96,9 +103,12 @@ public:
         control_register_ = (control_reg & kControlWritableMask) | kControlFixedOneMask;
         dtcm_register_ = dtcm_reg & kTcmRegionWriteMask;
         itcm_register_ = itcm_reg & kTcmRegionWriteMask;
+        refresh_tcm_cache();
     }
 
 private:
+    void refresh_tcm_cache() noexcept;
+
     u32 control_register_ = kControlFixedOneMask;
     u32 data_cacheable_ = 0U;
     u32 inst_cacheable_ = 0U;
@@ -112,6 +122,8 @@ private:
     u32 inst_lockdown_ = 0U;
     u32 dtcm_register_ = 0U;
     u32 itcm_register_ = 0U;
+    TcmRegionConfig dtcm_cfg_{};
+    TcmRegionConfig itcm_cfg_{};
     u32 trace_process_id_ = 0U;
     bool wfi_requested_ = false;
 };

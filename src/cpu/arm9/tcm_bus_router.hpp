@@ -3,6 +3,7 @@
 #include "cpu/arm9/cp15_system_control.hpp"
 #include "cpu/arm_architecture/bus_interface.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -45,6 +46,12 @@ public:
      */
     void reset() noexcept;
 
+    /**
+     * @brief Registers a direct pointer to the 4 MiB Main RAM backing buffer for fast `0x02xxxxxx` accesses.
+     */
+    void set_main_ram_fast_path(u8* main_ram_4mb) noexcept { main_ram_ = main_ram_4mb; }
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
+
     [[nodiscard]] u8 read8(Address address) override;
     [[nodiscard]] u16 read16(Address address) override;
     [[nodiscard]] u32 read32(Address address) override;
@@ -64,6 +71,8 @@ public:
 private:
     CpuBusInterface& external_bus_;
     const Cp15SystemControl& cp15_;
+    u8* main_ram_ = nullptr;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
     std::array<u8, kItcmPhysicalSize> itcm_{};
     std::array<u8, kDtcmPhysicalSize> dtcm_{};
 };

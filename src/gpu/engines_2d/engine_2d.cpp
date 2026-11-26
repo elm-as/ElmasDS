@@ -5,40 +5,29 @@
 #include <algorithm>
 
 namespace elmasds::gpu {
+namespace {
+
+[[nodiscard]] inline u16 read_le16(const u8* data, std::size_t off) noexcept {
+    return static_cast<u16>(data[off]) | (static_cast<u16>(data[off + 1U]) << 8U);
+}
+
+}  // namespace
 
 void ScanlineWorkBuffers::clear_for_line() noexcept {
-    for (auto& layer : bg_opaque) {
-        layer.fill(false);
-    }
-    obj_opaque.fill(false);
-    obj_priority.fill(4U);
-    obj_semi_transparent.fill(false);
-    obj_window.fill(false);
-    win_mask.fill(0x3FU);
+    for (auto& layer : bg_opaque) { layer.fill(false); }
+    obj_opaque.fill(false); obj_priority.fill(4U);
+    obj_semi_transparent.fill(false); obj_window.fill(false);
+    win_mask.fill(0x3FU); has_semi_obj = false;
 }
 
 Engine2D::Engine2D(const GpuRegisters& regs, const memory::MemorySystem& memory) noexcept
     : regs_(regs), memory_(memory) {}
 
-void Engine2D::set_line_3d_buffer(std::span<const u32> line_3d) noexcept {
-    line_3d_ = line_3d;
-}
-
-Address Engine2D::bg_base_address() const noexcept {
-    return regs_.is_engine_a() ? 0x06000000U : 0x06200000U;
-}
-
-Address Engine2D::obj_base_address() const noexcept {
-    return regs_.is_engine_a() ? 0x06400000U : 0x06600000U;
-}
-
-u16 Engine2D::read_vram16(Address offset) const noexcept {
-    return memory_.vram().read_arm9_16(offset);
-}
-
-u8 Engine2D::read_vram8(Address offset) const noexcept {
-    return memory_.vram().read_arm9_8(offset);
-}
+void Engine2D::set_line_3d_buffer(std::span<const u32> line_3d) noexcept { line_3d_ = line_3d; }
+Address Engine2D::bg_base_address() const noexcept { return regs_.is_engine_a() ? 0x06000000U : 0x06200000U; }
+Address Engine2D::obj_base_address() const noexcept { return regs_.is_engine_a() ? 0x06400000U : 0x06600000U; }
+u16 Engine2D::read_vram16(Address offset) const noexcept { return memory_.vram().read_arm9_16(offset); }
+u8 Engine2D::read_vram8(Address offset) const noexcept { return memory_.vram().read_arm9_8(offset); }
 
 u16 Engine2D::read_bg_palette(std::size_t bg, u32 pal_bank, u8 color_idx) const noexcept {
     const bool ext_enabled = (regs_.dispcnt() & (1U << 30U)) != 0U;
@@ -50,10 +39,7 @@ u16 Engine2D::read_bg_palette(std::size_t bg, u32 pal_bank, u8 color_idx) const 
             (slot * 8192U) + ((pal_bank & 15U) * 512U) + (static_cast<std::size_t>(color_idx) * 2U);
         const auto bank = regs_.is_engine_a() ? memory::VramBankId::E : memory::VramBankId::H;
         const auto span = memory_.vram().bank_data(bank);
-        if (byte_off + 1U < span.size()) {
-            return static_cast<u16>(span[byte_off]) |
-                   (static_cast<u16>(span[byte_off + 1U]) << 8U);
-        }
+        if (byte_off + 1U < span.size()) { return read_le16(span.data(), byte_off); }
     }
     const Address base = regs_.is_engine_a() ? 0x000U : 0x400U;
     return memory_.palette().read16(base + static_cast<Address>(color_idx) * 2U);
@@ -65,10 +51,7 @@ u16 Engine2D::read_obj_palette(u32 pal_bank, u8 color_idx, bool use_ext) const n
             ((pal_bank & 15U) * 512U) + (static_cast<std::size_t>(color_idx) * 2U);
         const auto bank = regs_.is_engine_a() ? memory::VramBankId::F : memory::VramBankId::I;
         const auto span = memory_.vram().bank_data(bank);
-        if (byte_off + 1U < span.size()) {
-            return static_cast<u16>(span[byte_off]) |
-                   (static_cast<u16>(span[byte_off + 1U]) << 8U);
-        }
+        if (byte_off + 1U < span.size()) { return read_le16(span.data(), byte_off); }
     }
     const Address base = regs_.is_engine_a() ? 0x200U : 0x600U;
     return memory_.palette().read16(base + static_cast<Address>(color_idx) * 2U);
@@ -79,10 +62,7 @@ void Engine2D::render_scanline(u16 line, std::span<u32, kScreenWidth> out_line) 
     const u32 disp_mode =
         regs_.is_engine_a() ? ((dispcnt >> 16U) & 0x03U) : ((dispcnt >> 16U) & 0x01U);
 
-    if (disp_mode == 0U) {
-        std::fill(out_line.begin(), out_line.end(), 0xFFFFFFFFU);
-        return;
-    }
+    if (disp_mode == 0U) { std::fill(out_line.begin(), out_line.end(), 0xFFFFFFFFU); return; }
     if (disp_mode == 2U && regs_.is_engine_a()) {
         render_vram_display_line(line, out_line);
         apply_master_brightness(out_line, regs_.master_bright());
@@ -106,45 +86,47 @@ void Engine2D::render_vram_display_line(u16 line,
 
     for (std::size_t x = 0U; x < kScreenWidth; ++x) {
         const std::size_t idx = row_base + x * 2U;
-        const u16 raw = (idx + 1U < data.size())
-                            ? static_cast<u16>(data[idx] | (static_cast<u16>(data[idx + 1U]) << 8U))
-                            : 0U;
+        const u16 raw = (idx + 1U < data.size()) ? read_le16(data.data(), idx) : 0U;
         out_line[x] = bgr555_to_argb8888(raw);
     }
 }
 
 void Engine2D::render_normal_line(u16 line, std::span<u32, kScreenWidth> out_line) {
-    work_.clear_for_line();
     const u32 dispcnt = regs_.dispcnt();
     const u32 bg_mode = dispcnt & 0x07U;
+    const u8 active_bgs = static_cast<u8>((dispcnt >> 8U) & 0x0FU);
+    const bool obj_enabled = (dispcnt & (1U << 12U)) != 0U;
 
     for (std::size_t bg = 0U; bg < 4U; ++bg) {
-        if ((dispcnt & (1U << (8U + bg))) != 0U) {
+        if ((active_bgs & (1U << bg)) != 0U) {
+            work_.bg_opaque[bg].fill(false);
             render_bg_layer(bg, line, bg_mode);
         }
     }
-    if ((dispcnt & (1U << 12U)) != 0U) {
+    if (obj_enabled) {
+        work_.obj_opaque.fill(false); work_.obj_priority.fill(4U);
+        work_.obj_semi_transparent.fill(false); work_.obj_window.fill(false);
+        work_.has_semi_obj = false;
         render_sprites_line(line);
     }
-    compute_window_masks(line);
+    if ((dispcnt & 0xE000U) != 0U) {
+        compute_window_masks(line);
+    }
 
     const Address pal_base = regs_.is_engine_a() ? 0x000U : 0x400U;
     const u32 backdrop = bgr555_to_argb8888(memory_.palette().read16(pal_base));
-    for (std::size_t x = 0U; x < kScreenWidth; ++x) {
-        out_line[x] = composite_pixel(x, backdrop);
-    }
+    composite_scanline(out_line, backdrop, active_bgs);
 }
 
 void Engine2D::render_bg_layer(std::size_t bg, u16 line, u32 bg_mode) {
     if (bg == 0U && regs_.is_engine_a() && (regs_.dispcnt() & (1U << 3U)) != 0U) {
-        if (line_3d_.size() >= kScreenWidth) {
-            for (std::size_t x = 0U; x < kScreenWidth; ++x) {
-                const u32 px = line_3d_[x];
-                if ((px >> 24U) != 0U) {
-                    work_.bg_color[0U][x] = px | 0xFF000000U;
-                    work_.bg_opaque[0U][x] = true;
-                }
-            }
+        if (line_3d_.size() < kScreenWidth) { return; }
+        const u32 hofs = regs_.bg_hofs(0U) & 0x1FFU;
+        for (std::size_t x = 0U; x < kScreenWidth; ++x) {
+            const u32 src_x = (static_cast<u32>(x) + hofs) & 0x1FFU;
+            if (src_x >= kScreenWidth) { continue; }
+            const u32 px = line_3d_[src_x];
+            if ((px >> 24U) != 0U) { work_.bg_color[0U][x] = px | 0xFF000000U; work_.bg_opaque[0U][x] = true; }
         }
         return;
     }
@@ -154,23 +136,15 @@ void Engine2D::render_bg_layer(std::size_t bg, u16 line, u32 bg_mode) {
         return;
     }
     if (bg == 2U) {
-        if (bg_mode == 0U || bg_mode == 1U || bg_mode == 3U) {
-            render_text_bg_line(2U, line);
-        } else if (bg_mode == 2U || bg_mode == 4U) {
-            render_affine_bg_line(2U, line);
-        } else {
-            render_extended_bg_line(2U, line);
-        }
+        if (bg_mode == 0U || bg_mode == 1U || bg_mode == 3U) { render_text_bg_line(2U, line); }
+        else if (bg_mode == 2U || bg_mode == 4U) { render_affine_bg_line(2U, line); }
+        else { render_extended_bg_line(2U, line); }
         return;
     }
 
-    if (bg_mode == 0U) {
-        render_text_bg_line(3U, line);
-    } else if (bg_mode == 1U || bg_mode == 2U) {
-        render_affine_bg_line(3U, line);
-    } else if (bg_mode >= 3U && bg_mode <= 5U) {
-        render_extended_bg_line(3U, line);
-    }
+    if (bg_mode == 0U) { render_text_bg_line(3U, line); }
+    else if (bg_mode == 1U || bg_mode == 2U) { render_affine_bg_line(3U, line); }
+    else if (bg_mode >= 3U && bg_mode <= 5U) { render_extended_bg_line(3U, line); }
 }
 
 void Engine2D::render_text_bg_line(std::size_t bg, u16 line) {
@@ -192,40 +166,64 @@ void Engine2D::render_text_bg_line(std::size_t bg, u16 line) {
     const u32 height_mask = ((size_mode & 2U) != 0U) ? 511U : 255U;
     const u32 py = (eff_line + regs_.bg_vofs(bg)) & height_mask;
     const u32 ty = py >> 3U;
+    const u16 hofs = regs_.bg_hofs(bg);
+    const u8* const pal_ptr = memory_.palette().data().data();
+    const Address pal_base = regs_.is_engine_a() ? 0x000U : 0x400U;
+    const bool ext_pal = is_8bpp && ((dispcnt & (1U << 30U)) != 0U);
+    const std::span<const u8> ext_span =
+        ext_pal ? memory_.vram().bank_data(regs_.is_engine_a() ? memory::VramBankId::E
+                                                               : memory::VramBankId::H)
+                : std::span<const u8>{};
+    const std::size_t ext_slot_base =
+        (((bg < 2U) && ((cnt & (1U << 13U)) != 0U)) ? (bg + 2U) : bg) * 8192U;
 
+    const auto& vram = memory_.vram();
+    u32 cached_key = 0xFFFFFFFFU;
+    u16 entry = 0U;
+    u32 row4 = 0U;
+    u32 row8_lo = 0U;
+    u32 row8_hi = 0U;
     for (std::size_t x = 0U; x < kScreenWidth; ++x) {
-        const std::size_t mx = (x / mos_x) * mos_x;
-        const u32 px = (static_cast<u32>(mx) + regs_.bg_hofs(bg)) & width_mask;
+        const std::size_t mx = mosaic_en ? ((x / mos_x) * mos_x) : x;
+        const u32 px = (static_cast<u32>(mx) + hofs) & width_mask;
         const u32 tx = px >> 3U;
-        u32 block = (tx >> 5U) + ((ty >> 5U) * ((size_mode == 3U) ? 2U : 1U));
-        if (size_mode == 2U) {
-            block = ty >> 5U;
+        const u32 block = (size_mode == 2U) ? (ty >> 5U)
+                                            : ((tx >> 5U) + ((ty >> 5U) * ((size_mode == 3U) ? 2U : 1U)));
+        const u32 key = (block << 8U) | tx;
+        if (key != cached_key) {
+            cached_key = key;
+            entry = read_vram16(scr_base + (block * 0x800U) + (((ty & 31U) * 32U + (tx & 31U)) * 2U));
+            const u32 tile_num = entry & 0x03FFU;
+            const u32 fy = ((entry & (1U << 11U)) != 0U) ? (7U - (py & 7U)) : (py & 7U);
+            if (!is_8bpp) {
+                row4 = vram.read_arm9_32_fast(char_base + (tile_num * 32U) + (fy * 4U));
+            } else {
+                const Address raddr = char_base + (tile_num * 64U) + (fy * 8U);
+                row8_lo = vram.read_arm9_32_fast(raddr);
+                row8_hi = vram.read_arm9_32_fast(raddr + 4U);
+            }
         }
-        const Address entry_addr =
-            scr_base + (block * 0x800U) + (((ty & 31U) * 32U + (tx & 31U)) * 2U);
-        const u16 entry = read_vram16(entry_addr);
-        const u32 tile_num = entry & 0x03FFU;
         const u32 fx = ((entry & (1U << 10U)) != 0U) ? (7U - (px & 7U)) : (px & 7U);
-        const u32 fy = ((entry & (1U << 11U)) != 0U) ? (7U - (py & 7U)) : (py & 7U);
-
         if (!is_8bpp) {
-            const u8 packed = read_vram8(char_base + (tile_num * 32U) + (fy * 4U) + (fx >> 1U));
-            const u8 idx = ((fx & 1U) == 0U) ? (packed & 0x0FU) : (packed >> 4U);
+            const u8 idx = static_cast<u8>((row4 >> (fx * 4U)) & 0x0FU);
             if (idx != 0U) {
-                const u32 pal_bank = (entry >> 12U) & 0x0FU;
-                const u16 col = memory_.palette().read16(
-                    (regs_.is_engine_a() ? 0x000U : 0x400U) + (pal_bank * 32U) + (idx * 2U));
-                work_.bg_color[bg][x] = bgr555_to_argb8888(col);
+                const Address off = pal_base + (((entry >> 12U) & 0x0FU) * 32U) + (idx * 2U);
+                work_.bg_color[bg][x] = bgr555_to_argb8888(read_le16(pal_ptr, off));
                 work_.bg_opaque[bg][x] = true;
             }
-        } else {
-            const u8 idx = read_vram8(char_base + (tile_num * 64U) + (fy * 8U) + fx);
-            if (idx != 0U) {
-                const u32 pal_bank = (entry >> 12U) & 0x0FU;
-                work_.bg_color[bg][x] = bgr555_to_argb8888(read_bg_palette(bg, pal_bank, idx));
-                work_.bg_opaque[bg][x] = true;
-            }
+            continue;
         }
+        const u8 idx = static_cast<u8>((((fx < 4U) ? row8_lo : row8_hi) >> ((fx & 3U) * 8U)) & 0xFFU);
+        if (idx == 0U) { continue; }
+        u16 col = 0U;
+        if (ext_pal) {
+            const std::size_t off = ext_slot_base + (((entry >> 12U) & 0x0FU) * 512U) + (idx * 2U);
+            if (off + 1U < ext_span.size()) { col = read_le16(ext_span.data(), off); }
+        } else {
+            col = read_le16(pal_ptr, pal_base + (static_cast<Address>(idx) * 2U));
+        }
+        work_.bg_color[bg][x] = bgr555_to_argb8888(col);
+        work_.bg_opaque[bg][x] = true;
     }
 }
 
@@ -248,11 +246,8 @@ void Engine2D::render_affine_bg_line(std::size_t bg, u16 line) {
         i32 px = cur_x >> 8;
         i32 py = cur_y >> 8;
         if (px < 0 || px >= dim || py < 0 || py >= dim) {
-            if (!wrap) {
-                continue;
-            }
-            px &= (dim - 1);
-            py &= (dim - 1);
+            if (!wrap) { continue; }
+            px &= (dim - 1); py &= (dim - 1);
         }
         const u32 tiles_per_row = static_cast<u32>(dim >> 3);
         const u8 tile_num = read_vram8(
@@ -267,11 +262,8 @@ void Engine2D::render_affine_bg_line(std::size_t bg, u16 line) {
 }
 
 void Engine2D::render_extended_bg_line(std::size_t bg, u16 line) {
-    if ((regs_.bg_cnt(bg) & (1U << 7U)) == 0U) {
-        render_extended_rotscale_line(bg, line);
-    } else {
-        render_extended_bitmap_line(bg, line);
-    }
+    if ((regs_.bg_cnt(bg) & (1U << 7U)) == 0U) { render_extended_rotscale_line(bg, line); }
+    else { render_extended_bitmap_line(bg, line); }
 }
 
 void Engine2D::render_extended_rotscale_line(std::size_t bg, u16 line) {
@@ -292,11 +284,8 @@ void Engine2D::render_extended_rotscale_line(std::size_t bg, u16 line) {
         i32 px = cur_x >> 8;
         i32 py = cur_y >> 8;
         if (px < 0 || px >= dim || py < 0 || py >= dim) {
-            if (!wrap) {
-                continue;
-            }
-            px &= (dim - 1);
-            py &= (dim - 1);
+            if (!wrap) { continue; }
+            px &= (dim - 1); py &= (dim - 1);
         }
         const u32 tiles_per_row = static_cast<u32>(dim >> 3);
         const u16 entry = read_vram16(
@@ -335,11 +324,8 @@ void Engine2D::render_extended_bitmap_line(std::size_t bg, u16 line) {
         i32 px = cur_x >> 8;
         i32 py = cur_y >> 8;
         if (px < 0 || px >= w || py < 0 || py >= h) {
-            if (!wrap) {
-                continue;
-            }
-            px &= (w - 1);
-            py &= (h - 1);
+            if (!wrap) { continue; }
+            px &= (w - 1); py &= (h - 1);
         }
         const u32 offset = static_cast<u32>(py * w + px);
         if (direct_color) {

@@ -9,6 +9,7 @@
 #include "hardware/interrupts/interrupt_controller.hpp"
 #include "memory/memory_bus/memory_system.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <cstddef>
 #include <span>
@@ -59,6 +60,7 @@ public:
 
     void register_mmio(memory::MmioRouter& arm9_mmio, memory::MmioRouter& arm7_mmio);
     void reset();
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept;
 
     [[nodiscard]] u16 vcount() const noexcept { return vcount_; }
     [[nodiscard]] u64 frame_count() const noexcept { return frame_count_; }
@@ -106,6 +108,7 @@ private:
 
     std::vector<u32> top_screen_;
     std::vector<u32> bottom_screen_;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::gpu

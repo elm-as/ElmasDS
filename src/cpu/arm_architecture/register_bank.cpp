@@ -17,22 +17,16 @@ RegisterBank::RegisterBank(ArmArchitecture architecture) noexcept : architecture
 }
 
 void RegisterBank::reset(Address reset_pc) noexcept {
+    active_regs_.fill(0U);
+    active_regs_[15U] = reset_pc;
     r0_to_r7_.fill(0U);
     r8_to_r12_user_.fill(0U);
     r8_to_r12_fiq_.fill(0U);
     sp_banked_.fill(0U);
     lr_banked_.fill(0U);
-    pc_ = reset_pc;
     cpsr_ = StatusRegister{};
+    active_bank_ = mode_to_bank(cpsr_.mode());
     spsr_banked_.fill(StatusRegister{});
-}
-
-u32 RegisterBank::read(RegisterIndex reg) const noexcept {
-    return read_for_bank(reg, mode_to_bank(current_mode()));
-}
-
-void RegisterBank::write(RegisterIndex reg, u32 value) noexcept {
-    write_for_bank(reg, mode_to_bank(current_mode()), value);
 }
 
 u32 RegisterBank::read_user(RegisterIndex reg) const noexcept {
@@ -43,12 +37,27 @@ void RegisterBank::write_user(RegisterIndex reg, u32 value) noexcept {
     write_for_bank(reg, ModeBank::UserSystem, value);
 }
 
-StatusRegister RegisterBank::cpsr() const noexcept {
-    return cpsr_;
-}
-
-void RegisterBank::set_cpsr(StatusRegister next_cpsr) noexcept {
-    cpsr_ = next_cpsr;
+void RegisterBank::sync_bank(ModeBank next_bank) noexcept {
+    if (next_bank == active_bank_) {
+        return;
+    }
+    const std::size_t cur_slot = static_cast<std::size_t>(active_bank_);
+    sp_banked_[cur_slot] = active_regs_[13U];
+    lr_banked_[cur_slot] = active_regs_[14U];
+    const bool cur_fiq = (active_bank_ == ModeBank::Fiq);
+    const bool next_fiq = (next_bank == ModeBank::Fiq);
+    if (cur_fiq != next_fiq) {
+        auto& save_dst = cur_fiq ? r8_to_r12_fiq_ : r8_to_r12_user_;
+        const auto& load_src = next_fiq ? r8_to_r12_fiq_ : r8_to_r12_user_;
+        for (std::size_t i = 0U; i < 5U; ++i) {
+            save_dst[i] = active_regs_[8U + i];
+            active_regs_[8U + i] = load_src[i];
+        }
+    }
+    const std::size_t next_slot = static_cast<std::size_t>(next_bank);
+    active_regs_[13U] = sp_banked_[next_slot];
+    active_regs_[14U] = lr_banked_[next_slot];
+    active_bank_ = next_bank;
 }
 
 StatusRegister RegisterBank::spsr() const noexcept {
@@ -67,43 +76,37 @@ void RegisterBank::set_spsr(StatusRegister next_spsr) noexcept {
     spsr_banked_[bank_to_spsr_slot(mode_to_bank(mode))] = next_spsr;
 }
 
-CpuMode RegisterBank::current_mode() const noexcept {
-    return cpsr_.mode();
-}
-
-void RegisterBank::switch_mode(CpuMode next_mode) noexcept {
-    cpsr_ = cpsr_.with_mode(next_mode);
-}
-
-ArmArchitecture RegisterBank::architecture() const noexcept {
-    return architecture_;
-}
-
 u32 RegisterBank::read_for_bank(RegisterIndex reg, ModeBank bank) const noexcept {
     const u8 index = static_cast<u8>(reg);
-    if (index <= 7U) {
-        return r0_to_r7_[index];
+    if (index <= 7U || index == 15U || bank == active_bank_) {
+        return active_regs_[index];
     }
     if (index <= 12U) {
+        const bool same_fiq = (bank == ModeBank::Fiq) == (active_bank_ == ModeBank::Fiq);
+        if (same_fiq) {
+            return active_regs_[index];
+        }
         const std::size_t slot = static_cast<std::size_t>(index - 8U);
         return (bank == ModeBank::Fiq) ? r8_to_r12_fiq_[slot] : r8_to_r12_user_[slot];
     }
     if (reg == RegisterIndex::Sp) {
         return sp_banked_[static_cast<std::size_t>(bank)];
     }
-    if (reg == RegisterIndex::Lr) {
-        return lr_banked_[static_cast<std::size_t>(bank)];
-    }
-    return pc_;
+    return lr_banked_[static_cast<std::size_t>(bank)];
 }
 
 void RegisterBank::write_for_bank(RegisterIndex reg, ModeBank bank, u32 value) noexcept {
     const u8 index = static_cast<u8>(reg);
-    if (index <= 7U) {
-        r0_to_r7_[index] = value;
+    if (index <= 7U || index == 15U || bank == active_bank_) {
+        active_regs_[index] = value;
         return;
     }
     if (index <= 12U) {
+        const bool same_fiq = (bank == ModeBank::Fiq) == (active_bank_ == ModeBank::Fiq);
+        if (same_fiq) {
+            active_regs_[index] = value;
+            return;
+        }
         const std::size_t slot = static_cast<std::size_t>(index - 8U);
         if (bank == ModeBank::Fiq) {
             r8_to_r12_fiq_[slot] = value;
@@ -116,11 +119,7 @@ void RegisterBank::write_for_bank(RegisterIndex reg, ModeBank bank, u32 value) n
         sp_banked_[static_cast<std::size_t>(bank)] = value;
         return;
     }
-    if (reg == RegisterIndex::Lr) {
-        lr_banked_[static_cast<std::size_t>(bank)] = value;
-        return;
-    }
-    pc_ = value;
+    lr_banked_[static_cast<std::size_t>(bank)] = value;
 }
 
 }  // namespace elmasds::cpu

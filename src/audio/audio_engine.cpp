@@ -11,18 +11,14 @@ namespace {
 constexpr std::array<i32, 8U> kAdpcmIndexTable = {-1, -1, -1, -1, 2, 4, 6, 8};
 
 constexpr std::array<i32, 89U> kAdpcmStepTable = {
-    7,     8,     9,     10,    11,    12,    13,    14,    16,    17,    19,    21,    23,
-    25,    28,    31,    34,    37,    41,    45,    50,    55,    60,    66,    73,    80,
-    88,    97,    107,   118,   130,   143,   157,   173,   190,   209,   230,   253,   279,
-    307,   337,   371,   408,   449,   494,   544,   598,   658,   724,   796,   876,   963,
-    1060,  1166,  1282,  1411,  1552,  1707,  1878,  2066,  2272,  2499,  2749,  3024,  3327,
-    3660,  4026,  4428,  4871,  5358,  5894,  6484,  7132,  7845,  8630,  9493,  10442, 11487,
-    12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
+    7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37,
+    41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209,
+    230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166,
+    1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484,
+    7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
 };
 
-[[nodiscard]] i16 clamp_s16(i32 value) noexcept {
-    return static_cast<i16>(std::clamp(value, -32768, 32767));
-}
+[[nodiscard]] i16 clamp_s16(i32 value) noexcept { return static_cast<i16>(std::clamp(value, -32768, 32767)); }
 
 }  // namespace
 
@@ -33,13 +29,8 @@ AudioEngine::AudioEngine(core::EventScheduler& scheduler, cpu::CpuBusInterface& 
 }
 
 void AudioEngine::reset() noexcept {
-    for (auto& ch : channels_) {
-        ch = AudioChannelState{};
-    }
-    soundcnt_ = 0U;
-    soundbias_ = 0x0200U;
-    sndcap0_cnt_ = 0U;
-    sndcap1_cnt_ = 0U;
+    for (auto& ch : channels_) { ch = AudioChannelState{}; }
+    soundcnt_ = 0U; soundbias_ = 0x0200U; sndcap0_cnt_ = 0U; sndcap1_cnt_ = 0U;
     sample_buffer_.clear();
     scheduler_.cancel_by_type(core::EventType::AudioSample);
     schedule_next_sample(0U);
@@ -140,18 +131,13 @@ void AudioEngine::write_channel_reg32(std::size_t channel_index,
         }
         break;
     }
-    case 0x4U:
-        ch.source_address = value & 0x07FFFFFCU;
-        break;
+    case 0x4U: ch.source_address = value & 0x07FFFFFCU; break;
     case 0x8U:
         ch.timer_reload = static_cast<u16>(value & 0xFFFFU);
         ch.loop_start_words = static_cast<u16>((value >> 16U) & 0xFFFFU);
         break;
-    case 0xCU:
-        ch.length_words = value & 0x003FFFFFU;
-        break;
-    default:
-        break;
+    case 0xCU: ch.length_words = value & 0x003FFFFFU; break;
+    default: break;
     }
 }
 
@@ -212,15 +198,9 @@ void AudioEngine::decode_next_adpcm_nibble(AudioChannelState& ch,
 
     const i32 step = kAdpcmStepTable[static_cast<std::size_t>(ch.adpcm_step_index)];
     i32 diff = step >> 3;
-    if ((nibble & 1U) != 0U) {
-        diff += step >> 2;
-    }
-    if ((nibble & 2U) != 0U) {
-        diff += step >> 1;
-    }
-    if ((nibble & 4U) != 0U) {
-        diff += step;
-    }
+    if ((nibble & 1U) != 0U) { diff += step >> 2; }
+    if ((nibble & 2U) != 0U) { diff += step >> 1; }
+    if ((nibble & 4U) != 0U) { diff += step; }
     ch.adpcm_value = ((nibble & 8U) != 0U) ? std::max(-32767, ch.adpcm_value - diff)
                                            : std::min(32767, ch.adpcm_value + diff);
     ch.adpcm_step_index = std::clamp(
@@ -305,6 +285,7 @@ void AudioEngine::step_channel(std::size_t channel_index) noexcept {
 }
 
 void AudioEngine::on_sample_tick(TickCount late_ticks) {
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Audio);
     schedule_next_sample(late_ticks);
 
     if (!bits::test_bit(soundcnt_, 15U)) {
@@ -341,22 +322,27 @@ void AudioEngine::on_sample_tick(TickCount late_ticks) {
 }
 
 std::vector<i16> AudioEngine::drain_samples(std::size_t max_samples) {
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Audio);
     const std::size_t count = std::min(max_samples, sample_buffer_.size()) & ~std::size_t{1U};
-    std::vector<i16> drained(sample_buffer_.begin(),
-                             sample_buffer_.begin() + static_cast<std::ptrdiff_t>(count));
-    sample_buffer_.erase(sample_buffer_.begin(),
-                         sample_buffer_.begin() + static_cast<std::ptrdiff_t>(count));
+    std::vector<i16> drained(sample_buffer_.begin(), sample_buffer_.begin() + static_cast<std::ptrdiff_t>(count));
+    sample_buffer_.erase(sample_buffer_.begin(), sample_buffer_.begin() + static_cast<std::ptrdiff_t>(count));
     return drained;
 }
 
-void AudioEngine::restore_state(
-    u16 soundcnt,
-    u16 soundbias,
-    const std::array<AudioChannelState, kAudioChannelCount>& channels) noexcept {
-    soundcnt_ = soundcnt;
-    soundbias_ = soundbias;
-    channels_ = channels;
-    sample_buffer_.clear();
+void AudioEngine::drain_all_into(std::vector<i16>& out) noexcept {
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Audio);
+    if (out.capacity() < kMaxBufferedSamples) { out.reserve(kMaxBufferedSamples); }
+    out.clear();
+    out.swap(sample_buffer_);
+    if ((out.size() & 1U) != 0U) {
+        sample_buffer_.push_back(out.back());
+        out.pop_back();
+    }
+}
+
+void AudioEngine::restore_state(u16 soundcnt, u16 soundbias,
+                                const std::array<AudioChannelState, kAudioChannelCount>& channels) noexcept {
+    soundcnt_ = soundcnt; soundbias_ = soundbias; channels_ = channels; sample_buffer_.clear();
 }
 
 }  // namespace elmasds::audio

@@ -60,6 +60,11 @@ Emulator::Emulator(EmulatorConfig config)
       keypad_(arm9_irq_, arm7_irq_), audio_(scheduler_, arm7_bus_),
       arm9_hle_bios_(hardware::interrupts::CpuKind::Arm9, arm9_irq_, &arm9_.cp15()),
       arm7_hle_bios_(hardware::interrupts::CpuKind::Arm7, arm7_irq_) {
+    arm9_.tcm().set_main_ram_fast_path(memory_.main_ram().mutable_data().data());
+    scheduler_.set_profiler(&profiler_); arm9_.tcm().set_profiler(&profiler_); arm7_bus_.set_profiler(&profiler_);
+    arm9_dma_.set_profiler(&profiler_); arm7_dma_.set_profiler(&profiler_);
+    arm9_timers_.set_profiler(&profiler_); arm7_timers_.set_profiler(&profiler_);
+    gpu_.set_profiler(&profiler_); audio_.set_profiler(&profiler_);
     arm9_.context().swi_handler = arm9_hle_bios_.make_swi_handler();
     arm7_.context().swi_handler = arm7_hle_bios_.make_swi_handler();
     register_mmio_devices();
@@ -68,46 +73,37 @@ Emulator::Emulator(EmulatorConfig config)
 }
 
 void Emulator::register_mmio_devices() {
-    auto& mmio9 = memory_.arm9_mmio();
-    auto& mmio7 = memory_.arm7_mmio();
-    gpu_.register_mmio(mmio9, mmio7);
-    mmio9.register_device({hardware::dma::kDmaBaseAddress, hardware::dma::kDmaFillEndAddress,
-                           &arm9_dma_});
-    mmio9.register_device({hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress,
-                           &arm9_timers_});
-    mmio9.register_device({hardware::cartridge::kCartMmioStart, hardware::cartridge::kCartMmioEnd,
-                           &cartridge_.arm9_mmio()});
-    mmio9.register_device({hardware::cartridge::kRegRomData, hardware::cartridge::kRegRomDataEnd,
-                           &cartridge_.arm9_mmio()});
-    mmio9.register_device({hardware::cartridge::kRegExMemCnt, hardware::cartridge::kRegExMemCntEnd,
-                           &cartridge_.arm9_mmio()});
-    mmio9.register_device({hardware::interrupts::InterruptController::kMmioStart,
-                           hardware::interrupts::InterruptController::kMmioEnd, &arm9_irq_});
-    mmio9.register_device({hardware::interrupts::SystemControlMmio::kMmioStart,
-                           hardware::interrupts::SystemControlMmio::kMmioEnd, &arm9_sys_ctrl_});
-    mmio9.register_device({hardware::math::kMathMmioStart, hardware::math::kMathMmioEnd,
-                           &arm9_math_});
-    mmio9.register_device({input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm9_mmio()});
+    auto& m9 = memory_.arm9_mmio();
+    auto& m7 = memory_.arm7_mmio();
+    gpu_.register_mmio(m9, m7);
+    const std::array<memory::MmioRegistration, 9U> reg9 = {{
+        {hardware::dma::kDmaBaseAddress, hardware::dma::kDmaFillEndAddress, &arm9_dma_},
+        {hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress, &arm9_timers_},
+        {hardware::cartridge::kCartMmioStart, hardware::cartridge::kCartMmioEnd, &cartridge_.arm9_mmio()},
+        {hardware::cartridge::kRegRomData, hardware::cartridge::kRegRomDataEnd, &cartridge_.arm9_mmio()},
+        {hardware::cartridge::kRegExMemCnt, hardware::cartridge::kRegExMemCntEnd, &cartridge_.arm9_mmio()},
+        {hardware::interrupts::InterruptController::kMmioStart, hardware::interrupts::InterruptController::kMmioEnd, &arm9_irq_},
+        {hardware::interrupts::SystemControlMmio::kMmioStart, hardware::interrupts::SystemControlMmio::kMmioEnd, &arm9_sys_ctrl_},
+        {hardware::math::kMathMmioStart, hardware::math::kMathMmioEnd, &arm9_math_},
+        {input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm9_mmio()},
+    }};
+    for (const auto& entry : reg9) { m9.register_device(entry); }
 
-    mmio7.register_device({hardware::dma::kDmaBaseAddress, hardware::dma::kDmaChannelEndAddress,
-                           &arm7_dma_});
-    mmio7.register_device({hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress,
-                           &arm7_timers_});
-    mmio7.register_device({hardware::rtc::kRtcMmioStart, hardware::rtc::kRtcMmioEnd, &arm7_rtc_});
-    mmio7.register_device({hardware::cartridge::kCartMmioStart, hardware::cartridge::kCartMmioEnd,
-                           &cartridge_.arm7_mmio()});
-    mmio7.register_device({hardware::cartridge::kRegRomData, hardware::cartridge::kRegRomDataEnd,
-                           &cartridge_.arm7_mmio()});
-    mmio7.register_device({hardware::cartridge::kRegExMemCnt, hardware::cartridge::kRegExMemCntEnd,
-                           &cartridge_.arm7_mmio()});
-    mmio7.register_device({hardware::spi::kSpiMmioStart, hardware::spi::kSpiMmioEnd, &arm7_spi_});
-    mmio7.register_device({hardware::interrupts::InterruptController::kMmioStart,
-                           hardware::interrupts::InterruptController::kMmioEnd, &arm7_irq_});
-    mmio7.register_device({hardware::interrupts::SystemControlMmio::kMmioStart,
-                           hardware::interrupts::SystemControlMmio::kMmioEnd, &arm7_sys_ctrl_});
-    mmio7.register_device({input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm7_mmio()});
-    mmio7.register_device({audio::kAudioMmioStart, audio::kAudioMmioEnd, &audio_});
-    ipc_.register_mmio(mmio9, mmio7);
+    const std::array<memory::MmioRegistration, 11U> reg7 = {{
+        {hardware::dma::kDmaBaseAddress, hardware::dma::kDmaChannelEndAddress, &arm7_dma_},
+        {hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress, &arm7_timers_},
+        {hardware::rtc::kRtcMmioStart, hardware::rtc::kRtcMmioEnd, &arm7_rtc_},
+        {hardware::cartridge::kCartMmioStart, hardware::cartridge::kCartMmioEnd, &cartridge_.arm7_mmio()},
+        {hardware::cartridge::kRegRomData, hardware::cartridge::kRegRomDataEnd, &cartridge_.arm7_mmio()},
+        {hardware::cartridge::kRegExMemCnt, hardware::cartridge::kRegExMemCntEnd, &cartridge_.arm7_mmio()},
+        {hardware::spi::kSpiMmioStart, hardware::spi::kSpiMmioEnd, &arm7_spi_},
+        {hardware::interrupts::InterruptController::kMmioStart, hardware::interrupts::InterruptController::kMmioEnd, &arm7_irq_},
+        {hardware::interrupts::SystemControlMmio::kMmioStart, hardware::interrupts::SystemControlMmio::kMmioEnd, &arm7_sys_ctrl_},
+        {input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm7_mmio()},
+        {audio::kAudioMmioStart, audio::kAudioMmioEnd, &audio_},
+    }};
+    for (const auto& entry : reg7) { m7.register_device(entry); }
+    ipc_.register_mmio(m9, m7);
 }
 
 void Emulator::report_load_status(std::string_view image_name, const Status& status) {
@@ -143,32 +139,23 @@ void Emulator::load_configured_system_images() {
 void Emulator::reset() noexcept {
     scheduler_.reset();
     memory_.reset();
-    arm9_irq_.reset();
-    arm7_irq_.reset();
-    arm9_sys_ctrl_.reset();
-    arm7_sys_ctrl_.reset();
-    arm9_timers_.reset();
-    arm7_timers_.reset();
-    arm9_dma_.reset();
-    arm7_dma_.reset();
-    ipc_.reset();
-    arm9_math_.reset();
-    arm7_spi_.reset();
-    arm7_rtc_.reset();
-    cartridge_.reset();
-    gpu_.reset();
-    keypad_.reset();
-    audio_.reset();
-    arm9_hle_bios_.reset();
-    arm7_hle_bios_.reset();
+    arm9_irq_.reset(); arm7_irq_.reset();
+    arm9_sys_ctrl_.reset(); arm7_sys_ctrl_.reset();
+    arm9_timers_.reset(); arm7_timers_.reset();
+    arm9_dma_.reset(); arm7_dma_.reset();
+    ipc_.reset(); arm9_math_.reset();
+    arm7_spi_.reset(); arm7_rtc_.reset();
+    cartridge_.reset(); gpu_.reset();
+    keypad_.reset(); audio_.reset();
+    arm9_hle_bios_.reset(); arm7_hle_bios_.reset();
     arm9_.reset(0xFFFF0000U, true);
     arm7_.reset(0x00000000U);
+    arm9_.tcm().set_main_ram_fast_path(memory_.main_ram().mutable_data().data());
     arm9_.context().swi_handler = arm9_hle_bios_.make_swi_handler();
     arm7_.context().swi_handler = arm7_hle_bios_.make_swi_handler();
     arm9_hle_bios_.set_enabled(!memory_.bios9().is_loaded());
     arm7_hle_bios_.set_enabled(!memory_.bios7().is_loaded());
-    arm9_cycle_debt_ = 0U;
-    arm7_cycle_debt_ = 0U;
+    arm9_cycle_debt_ = 0U; arm7_cycle_debt_ = 0U;
     cpu_execution_enabled_ = memory_.bios9().is_loaded() && memory_.bios7().is_loaded();
     diagnostics_.info("Emulator", "Emulator state reset.");
 }
@@ -230,22 +217,20 @@ void Emulator::populate_post_bios_memory(const storage::rom_loader::NdsRom& rom)
     const std::size_t header_copy = std::min<std::size_t>(kBootHeaderCopySize, rom.bytes().size());
     write_bytes_to_bus(arm9_bus_, kBootHeaderRamAddress, rom.bytes().subspan(0U, header_copy));
 
-    arm9_bus_.write32(0x027FF800U, chip_id);
-    arm9_bus_.write32(0x027FF804U, chip_id);
-    arm9_bus_.write16(0x027FF808U, hdr.header_crc);
-    arm9_bus_.write16(0x027FF80AU, hdr.secure_area_crc);
-    arm9_bus_.write16(0x027FF850U, 0x5835U);
-    arm9_bus_.write16(0x027FF868U, 0x7FC0U);
-    arm9_bus_.write16(0x027FF874U, hdr.header_crc);
-    arm9_bus_.write16(0x027FF876U, hdr.secure_area_crc);
-
-    arm9_bus_.write32(0x027FFC00U, chip_id);
-    arm9_bus_.write32(0x027FFC04U, chip_id);
-    arm9_bus_.write16(0x027FFC08U, hdr.header_crc);
-    arm9_bus_.write16(0x027FFC0AU, hdr.secure_area_crc);
-    arm9_bus_.write16(0x027FFC10U, 0x5835U);
-    arm9_bus_.write16(0x027FFC40U, 0x0001U);
-
+    for (const Address addr : {0x027FF800U, 0x027FF804U, 0x027FFC00U, 0x027FFC04U}) {
+        arm9_bus_.write32(addr, chip_id);
+    }
+    struct Field16 { Address addr; u16 val; };
+    const std::array<Field16, 10U> fields16 = {{
+        {0x027FF808U, hdr.header_crc},      {0x027FF80AU, hdr.secure_area_crc},
+        {0x027FF850U, u16{0x5835U}},        {0x027FF868U, u16{0x7FC0U}},
+        {0x027FF874U, hdr.header_crc},      {0x027FF876U, hdr.secure_area_crc},
+        {0x027FFC08U, hdr.header_crc},      {0x027FFC0AU, hdr.secure_area_crc},
+        {0x027FFC10U, u16{0x5835U}},        {0x027FFC40U, u16{0x0001U}},
+    }};
+    for (const auto& f : fields16) {
+        arm9_bus_.write16(f.addr, f.val);
+    }
     const auto& fw = arm7_spi_.firmware().data();
     if (fw.size() >= 0x3FE70U) {
         write_bytes_to_bus(arm9_bus_, 0x027FFC80U, std::span<const u8>(fw.data() + 0x3FE00U, 0x70U));
@@ -258,24 +243,18 @@ Status Emulator::direct_boot() {
         return Status::err(ErrorCode::NotInitialized,
                            "Cannot direct boot before an NDS ROM is loaded.");
     }
-
     reset();
     if (!firmware_loaded_) {
         arm7_spi_.firmware().load_image(storage::firmware::create_default_firmware_image());
     }
-    if (!memory_.bios9().is_loaded()) {
-        memory_.bios9().install_hle_stub(cpu::create_hle_bios9_stub());
-    }
-    if (!memory_.bios7().is_loaded()) {
-        memory_.bios7().install_hle_stub(cpu::create_hle_bios7_stub());
-    }
+    if (!memory_.bios9().is_loaded()) { memory_.bios9().install_hle_stub(cpu::create_hle_bios9_stub()); }
+    if (!memory_.bios7().is_loaded()) { memory_.bios7().install_hle_stub(cpu::create_hle_bios7_stub()); }
 
     memory_.shared_wram().set_wram_cnt(0x03U);
     const auto& hdr = rom->header();
     write_bytes_to_bus(arm9_bus_, hdr.arm9_ram_address, rom->arm9_binary());
     write_bytes_to_bus(arm7_bus_, hdr.arm7_ram_address, rom->arm7_binary());
     populate_post_bios_memory(*rom);
-
     arm9_sys_ctrl_.write8(hardware::interrupts::SystemControlMmio::kRegPostFlg, 1U);
     arm7_sys_ctrl_.write8(hardware::interrupts::SystemControlMmio::kRegPostFlg, 1U);
 
@@ -284,7 +263,6 @@ Status Emulator::direct_boot() {
     arm9_.context().high_vectors = true;
     configure_direct_boot_stacks(arm9_.registers(), hdr.arm9_entry_address,
                                  {0x03002F7CU, 0x03003F80U, 0x03003FC0U});
-
     arm7_.reset(hdr.arm7_entry_address);
     configure_direct_boot_stacks(arm7_.registers(), hdr.arm7_entry_address,
                                  {0x0380FD80U, 0x0380FF80U, 0x0380FFC0U});
@@ -302,61 +280,57 @@ void Emulator::step_ticks(TickCount delta_ticks) {
 
     TickCount remaining = delta_ticks;
     while (remaining > 0U) {
-        TickCount slice = std::min(remaining, kMaxCpuSliceTicks);
+        TickCount until_event = remaining;
         if (const auto next_tick = scheduler_.next_event_tick(); next_tick.has_value()) {
             const TickCount now = scheduler_.current_tick();
-            const TickCount until_event = (*next_tick > now) ? (*next_tick - now) : 1ULL;
-            slice = std::min(slice, until_event);
+            until_event = (*next_tick > now) ? (*next_tick - now) : 1ULL;
         }
+        if (arm9_.can_skip_halt() && arm7_.can_skip_halt()) {
+            const TickCount jump = std::min(remaining, until_event);
+            arm9_cycle_debt_ = 0U; arm7_cycle_debt_ = 0U;
+            { primitives::ScopedProfile ps(&profiler_, primitives::ProfileCategory::Scheduler); scheduler_.advance_by(jump); }
+            remaining -= jump;
+            continue;
+        }
+        const TickCount slice = std::min({remaining, until_event, kMaxCpuSliceTicks});
         step_cpu_slice(slice);
-        scheduler_.advance_by(slice);
+        { primitives::ScopedProfile ps(&profiler_, primitives::ProfileCategory::Scheduler); scheduler_.advance_by(slice); }
         remaining -= slice;
     }
 }
 
 void Emulator::step_cpu_slice(TickCount slice_ticks) {
-    arm9_cycle_debt_ += slice_ticks;
-    while (arm9_cycle_debt_ > 0U) {
-        const u32 cycles = arm9_.step();
-        arm9_cycle_debt_ = (cycles >= arm9_cycle_debt_) ? 0U : (arm9_cycle_debt_ - cycles);
+    if (arm9_.can_skip_halt()) {
+        arm9_cycle_debt_ = 0U;
+    } else {
+        primitives::ScopedProfile p9(&profiler_, primitives::ProfileCategory::Arm9);
+        arm9_cycle_debt_ = arm9_.run_slice(arm9_cycle_debt_ + slice_ticks);
     }
-
-    arm7_cycle_debt_ += slice_ticks;
-    while (arm7_cycle_debt_ >= kArm7TicksPerCycle) {
-        arm7_bus_.set_current_pc(arm7_.registers().read(cpu::RegisterIndex::Pc));
-        const TickCount ticks_used = static_cast<TickCount>(arm7_.step()) * kArm7TicksPerCycle;
-        arm7_cycle_debt_ = (ticks_used >= arm7_cycle_debt_) ? 0U : (arm7_cycle_debt_ - ticks_used);
+    if (arm7_.can_skip_halt()) {
+        arm7_cycle_debt_ = 0U;
+    } else {
+        primitives::ScopedProfile p7(&profiler_, primitives::ProfileCategory::Arm7);
+        arm7_cycle_debt_ = arm7_.run_slice_ticks(arm7_cycle_debt_ + slice_ticks);
     }
 }
 
 void Emulator::trigger_vblank() {
-    arm9_irq_.request_irq(hardware::interrupts::IrqSource::VBlank);
-    arm7_irq_.request_irq(hardware::interrupts::IrqSource::VBlank);
-    arm9_dma_.trigger_vblank();
-    arm7_dma_.trigger_vblank();
+    arm9_irq_.request_irq(hardware::interrupts::IrqSource::VBlank); arm7_irq_.request_irq(hardware::interrupts::IrqSource::VBlank);
+    arm9_dma_.trigger_vblank(); arm7_dma_.trigger_vblank();
 }
-
 void Emulator::trigger_hblank() {
-    arm9_irq_.request_irq(hardware::interrupts::IrqSource::HBlank);
-    arm7_irq_.request_irq(hardware::interrupts::IrqSource::HBlank);
+    arm9_irq_.request_irq(hardware::interrupts::IrqSource::HBlank); arm7_irq_.request_irq(hardware::interrupts::IrqSource::HBlank);
     arm9_dma_.trigger_hblank();
 }
-
 void Emulator::trigger_gxfifo() {
-    arm9_irq_.request_irq(hardware::interrupts::IrqSource::GeometryFifo);
-    arm9_dma_.trigger_gxfifo();
+    arm9_irq_.request_irq(hardware::interrupts::IrqSource::GeometryFifo); arm9_dma_.trigger_gxfifo();
 }
-
 void Emulator::set_touch_state(u16 x, u16 y, bool pressed) noexcept {
-    arm7_spi_.touchscreen().set_touch_state(pressed, x, y);
-    keypad_.set_button_pressed(input::DsButton::PenDown, pressed);
+    arm7_spi_.touchscreen().set_touch_state(pressed, x, y); keypad_.set_button_pressed(input::DsButton::PenDown, pressed);
 }
-
 void Emulator::set_touch_pixel(u16 pixel_x, u16 pixel_y, bool pressed) noexcept {
-    const auto adc = input::pixel_to_touch_adc(pixel_x, pixel_y);
-    set_touch_state(adc.raw_x, adc.raw_y, pressed);
+    const auto adc = input::pixel_to_touch_adc(pixel_x, pixel_y); set_touch_state(adc.raw_x, adc.raw_y, pressed);
 }
-
 void Emulator::run_frame() { step_ticks(gpu::kTicksPerFrame); }
 void Emulator::set_rtc_datetime(const hardware::rtc::RtcDateTime& dt) noexcept { arm7_rtc_.set_date_time(dt); }
 

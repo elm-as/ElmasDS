@@ -51,6 +51,7 @@ public:
      * @return Actual cycles elapsed during this call.
      */
     u64 run_cycles(u32 cycle_budget);
+    TickCount run_slice_ticks(TickCount tick_budget);
 
     /**
      * @brief Sets the external active-high IRQ input line level.
@@ -79,6 +80,9 @@ public:
     [[nodiscard]] const ArmCoreContext& context() const noexcept;
 
     [[nodiscard]] bool is_halted() const noexcept;
+    [[nodiscard]] bool can_skip_halt() const noexcept {
+        return context_.halted && !interrupts_.irq && !interrupts_.fiq && !context_.wake_pending;
+    }
     [[nodiscard]] TickCount total_cycles() const noexcept;
 
 private:

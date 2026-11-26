@@ -83,6 +83,9 @@ void EventScheduler::pop_and_dispatch() {
         current_tick_ = event.trigger_tick;
     }
     const TickCount late_ticks = current_tick_ - event.trigger_tick;
+    if (profiler_ != nullptr && profiler_->is_enabled()) {
+        profiler_->add_scheduler_event();
+    }
     event.handler.invoke(event.handler.context, late_ticks);
 }
 

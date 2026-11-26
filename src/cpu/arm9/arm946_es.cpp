@@ -19,7 +19,6 @@ void Arm946Es::reset(Address reset_pc, bool high_vectors) noexcept {
 }
 
 u32 Arm946Es::step() {
-    context_.high_vectors = cp15_.high_vectors();
     const u32 cycles = step_arm_core(context_, interrupts_);
     context_.high_vectors = cp15_.high_vectors();
     // Real ARM946E-S does not remain halted if an interrupt or wake condition is already pending.
@@ -37,6 +36,17 @@ u64 Arm946Es::run_cycles(u32 cycle_budget) {
         elapsed += step();
     }
     return elapsed;
+}
+
+TickCount Arm946Es::run_slice(TickCount cycle_budget) {
+    while (cycle_budget > 0ULL) {
+        if (can_skip_halt()) {
+            return 0ULL;
+        }
+        const u32 cycles = step();
+        cycle_budget = (cycles >= cycle_budget) ? 0ULL : (cycle_budget - cycles);
+    }
+    return 0ULL;
 }
 
 void Arm946Es::set_irq_line(bool asserted) noexcept {

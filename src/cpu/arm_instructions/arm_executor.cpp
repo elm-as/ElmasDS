@@ -9,10 +9,30 @@
 #include "cpu/arm_instructions/arm_memory_transfer.hpp"
 #include "primitives/bit_operations.hpp"
 
+#include <array>
 #include <optional>
 
 namespace elmasds::cpu {
 namespace {
+
+constexpr u8 kArmLutExact = 0xFFU;
+
+[[nodiscard]] constexpr std::array<u8, 4096U> build_arm_lut(ArmArchitecture arch) noexcept {
+    std::array<u8, 4096U> lut{};
+    for (u32 key = 0U; key < 4096U; ++key) {
+        const u32 b27_20 = (key >> 4U) & 0xFFU;
+        if ((b27_20 & 0xD9U) == 0x10U || (b27_20 & 0xFBU) == 0x32U) {
+            lut[key] = kArmLutExact;
+            continue;
+        }
+        const u32 synthetic_opcode = (b27_20 << 20U) | ((key & 0x0FU) << 4U);
+        lut[key] = static_cast<u8>(decode_arm_instruction(synthetic_opcode, arch));
+    }
+    return lut;
+}
+
+const auto kArmV4Lut = build_arm_lut(ArmArchitecture::ArmV4T);
+const auto kArmV5Lut = build_arm_lut(ArmArchitecture::ArmV5Te);
 
 struct ArmDispatchRequest {
     ArmInstructionKind kind = ArmInstructionKind::Undefined;
@@ -127,20 +147,31 @@ struct ArmDispatchRequest {
 ArmStepResult step_arm_instruction(ArmCoreContext& context) {
     const Address pc = context.registers.read(RegisterIndex::Pc) & ~3U;
     const u32 opcode = context.bus.fetch32(pc);
-    const ConditionCode cond = static_cast<ConditionCode>(bits::extract_bits(opcode, 28U, 4U));
+    const u32 cond_raw = opcode >> 28U;
+    const ArmArchitecture arch = context.registers.architecture();
 
-    if (cond == ConditionCode::Nv) {
-        if (context.registers.architecture() != ArmArchitecture::ArmV5Te) {
+    if (cond_raw != 0xEU) {
+        if (cond_raw == 0xFU) {
+            if (arch != ArmArchitecture::ArmV5Te) {
+                context.registers.write(RegisterIndex::Pc, pc + 4U);
+                return ArmStepResult{1U, false};
+            }
+            const ArmInstructionKind kind = detail::decode_unconditional_v5(opcode);
+            const ArmStepResult res = dispatch_decoded(context, ArmDispatchRequest{kind, opcode, pc});
+            if (!res.pc_written) { context.registers.write(RegisterIndex::Pc, pc + 4U); }
+            return res;
+        }
+        if (!evaluate_condition(static_cast<ConditionCode>(cond_raw), context.registers.cpsr())) {
             context.registers.write(RegisterIndex::Pc, pc + 4U);
             return ArmStepResult{1U, false};
         }
-    } else if (!evaluate_condition(cond, context.registers.cpsr())) {
-        context.registers.write(RegisterIndex::Pc, pc + 4U);
-        return ArmStepResult{1U, false};
     }
 
-    const ArmInstructionKind kind =
-        decode_arm_instruction(opcode, context.registers.architecture());
+    const u32 key = ((opcode >> 16U) & 0xFF0U) | ((opcode >> 4U) & 0x00FU);
+    const u8 lut_val = (arch == ArmArchitecture::ArmV5Te) ? kArmV5Lut[key] : kArmV4Lut[key];
+    const ArmInstructionKind kind = (lut_val != kArmLutExact)
+                                        ? static_cast<ArmInstructionKind>(lut_val)
+                                        : decode_arm_instruction(opcode, arch);
     const ArmStepResult result = dispatch_decoded(context, ArmDispatchRequest{kind, opcode, pc});
     if (!result.pc_written) {
         context.registers.write(RegisterIndex::Pc, pc + 4U);

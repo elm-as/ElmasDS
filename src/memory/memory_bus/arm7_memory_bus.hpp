@@ -3,6 +3,7 @@
 #include "cpu/arm_architecture/bus_interface.hpp"
 #include "memory/memory_bus/memory_system.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 namespace elmasds::memory {
 
@@ -31,6 +32,7 @@ public:
     void write32(Address address, u32 value) override;
 
     void set_current_pc(Address pc) noexcept { current_pc_ = pc; }
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
     [[nodiscard]] Address current_pc() const noexcept { return current_pc_; }
 
     [[nodiscard]] TickCount accumulated_waitstates() const noexcept {
@@ -47,6 +49,7 @@ private:
     MemorySystem& system_;
     Address current_pc_ = 0U;
     TickCount accumulated_waitstates_ = 0U;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::memory

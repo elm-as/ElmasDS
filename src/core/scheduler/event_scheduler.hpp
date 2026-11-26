@@ -2,6 +2,7 @@
 
 #include "core/scheduler/scheduler_event.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -62,6 +63,7 @@ public:
     [[nodiscard]] TickCount current_tick() const noexcept;
     [[nodiscard]] std::optional<TickCount> next_event_tick() const noexcept;
     [[nodiscard]] std::size_t pending_count() const noexcept;
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
 
 private:
     void pop_and_dispatch();
@@ -69,6 +71,7 @@ private:
     TickCount current_tick_ = 0;
     u64 next_sequence_id_ = 1;
     std::vector<ScheduledEvent> heap_;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::core

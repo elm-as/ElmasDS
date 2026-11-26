@@ -2,6 +2,7 @@
 
 #include "primitives/bit_operations.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace elmasds::cpu {
@@ -53,11 +54,14 @@ constexpr u64 kBaseTcmVirtualUnit = 512ULL;
     const u64 virtual_size = (size_field >= kMinTcmSizeField && size_field <= kMaxTcmSizeField)
                                  ? (kBaseTcmVirtualUnit << size_field)
                                  : 0ULL;
+    const Address base = reg & 0xFFFFF000U;
+    const u64 clamped_end = std::min<u64>(static_cast<u64>(base) + virtual_size, 0x100000000ULL);
     return TcmRegionConfig{
         .enabled = enabled,
         .load_mode = load_mode,
-        .base_address = reg & 0xFFFFF000U,
+        .base_address = base,
         .virtual_size_bytes = virtual_size,
+        .end_address = (virtual_size > 0ULL) ? clamped_end : 0ULL,
     };
 }
 
@@ -79,6 +83,7 @@ void Cp15SystemControl::reset(bool high_vectors) noexcept {
     itcm_register_ = 0U;
     trace_process_id_ = 0U;
     wfi_requested_ = false;
+    refresh_tcm_cache();
 }
 
 bool Cp15SystemControl::write_register(const CoprocessorTransfer& transfer, u32 value) {
@@ -92,6 +97,7 @@ bool Cp15SystemControl::write_register(const CoprocessorTransfer& transfer, u32 
             return false;
         }
         control_register_ = (value & kControlWritableMask) | kControlFixedOneMask;
+        refresh_tcm_cache();
         return true;
 
     case 2U:
@@ -158,6 +164,7 @@ bool Cp15SystemControl::write_register(const CoprocessorTransfer& transfer, u32 
         } else {
             itcm_register_ = value & kTcmRegionWriteMask;
         }
+        refresh_tcm_cache();
         return true;
 
     case 13U:
@@ -235,24 +242,11 @@ std::optional<u32> Cp15SystemControl::read_register(const CoprocessorTransfer& t
     }
 }
 
-bool Cp15SystemControl::high_vectors() const noexcept {
-    return bits::test_bit(control_register_, kBitHivects);
-}
-
-TcmRegionConfig Cp15SystemControl::dtcm_config() const noexcept {
-    return decode_tcm_region(dtcm_register_,
-                             bits::test_bit(control_register_, kBitDtcmEnable),
-                             bits::test_bit(control_register_, kBitDtcmLoadMode));
-}
-
-TcmRegionConfig Cp15SystemControl::itcm_config() const noexcept {
-    return decode_tcm_region(itcm_register_,
-                             bits::test_bit(control_register_, kBitItcmEnable),
-                             bits::test_bit(control_register_, kBitItcmLoadMode));
-}
-
-bool Cp15SystemControl::consume_wfi_request() noexcept {
-    return std::exchange(wfi_requested_, false);
+void Cp15SystemControl::refresh_tcm_cache() noexcept {
+    dtcm_cfg_ = decode_tcm_region(dtcm_register_, bits::test_bit(control_register_, kBitDtcmEnable),
+                                  bits::test_bit(control_register_, kBitDtcmLoadMode));
+    itcm_cfg_ = decode_tcm_region(itcm_register_, bits::test_bit(control_register_, kBitItcmEnable),
+                                  bits::test_bit(control_register_, kBitItcmLoadMode));
 }
 
 }  // namespace elmasds::cpu

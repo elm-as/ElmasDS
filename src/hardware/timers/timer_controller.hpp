@@ -6,6 +6,7 @@
 #include "hardware/timers/timer_channel.hpp"
 #include "memory/mmio/mmio_device.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -42,6 +43,7 @@ public:
      * @brief Returns read-only state of channel `index` (`0..3`, clamped to `0` if out of range).
      */
     [[nodiscard]] const TimerChannel& channel(std::size_t index) const noexcept;
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
 
     [[nodiscard]] u8 read8(Address address) override;
     [[nodiscard]] u16 read16(Address address) override;
@@ -72,6 +74,7 @@ private:
     core::EventScheduler& scheduler_;
     interrupts::InterruptController& irq_;
     std::array<TimerChannel, kTimerChannelCount> channels_{};
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::hardware::timers

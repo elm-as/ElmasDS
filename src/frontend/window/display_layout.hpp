@@ -7,6 +7,16 @@
 namespace elmasds::frontend {
 
 /**
+ * @brief Supported dual-screen arrangement presets for the frontend window.
+ */
+enum class ScreenLayoutMode : u8 {
+    Vertical = 0,
+    SideBySide = 1,
+    HybridTop = 2,
+    HybridBottom = 3,
+};
+
+/**
  * @brief Axis-aligned pixel rectangle in window coordinates.
  */
 struct ScreenRect {
@@ -40,10 +50,13 @@ struct LayoutRequest {
     i32 window_height = 768;
     u32 native_gap = 0;
     bool prefer_integer_scale = true;
+    ScreenLayoutMode mode = ScreenLayoutMode::Vertical;
+    bool swap_screens = false;
+    i32 top_inset = 0;
 };
 
 /**
- * @brief Computed viewports for both stacked Nintendo DS screens inside a window.
+ * @brief Computed viewports for both Nintendo DS screens inside a window.
  */
 struct DualScreenLayout {
     ScreenRect top_screen{};
@@ -52,17 +65,12 @@ struct DualScreenLayout {
 };
 
 /**
- * @brief Computes aspect-preserving viewports for the stacked dual 256x192 DS screens.
- * @param request Host window dimensions, native vertical gap, and integer scaling flag.
- * @return Centered top and bottom screen rectangles in window pixel coordinates.
+ * @brief Computes aspect-preserving viewports for both 256x192 DS screens according to `request.mode`.
  */
 [[nodiscard]] DualScreenLayout compute_dual_screen_layout(const LayoutRequest& request) noexcept;
 
 /**
  * @brief Maps a window-space pointer position to native bottom-screen coordinates.
- * @param layout Active dual-screen viewport layout.
- * @param point Pointer position in window pixels (origin at top-left).
- * @return Native (0..255, 0..191) coordinate if inside the bottom screen; std::nullopt otherwise.
  */
 [[nodiscard]] std::optional<TouchPoint> map_window_point_to_touch(
     const DualScreenLayout& layout,

@@ -6,6 +6,7 @@
 #include "hardware/interrupts/irq_source.hpp"
 #include "memory/mmio/mmio_device.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -88,6 +89,7 @@ public:
      * @brief Returns the owning processor core (`CpuKind::Arm9` or `CpuKind::Arm7`).
      */
     [[nodiscard]] interrupts::CpuKind cpu() const noexcept;
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
 
     [[nodiscard]] u8 read8(Address address) override;
     [[nodiscard]] u16 read16(Address address) override;
@@ -115,7 +117,9 @@ private:
     interrupts::InterruptController& irq_;
     std::array<DmaChannel, kDmaChannelCount> channels_{};
     std::array<u32, kDmaChannelCount> fill_registers_{};
+    std::array<bool, kDmaChannelCount> in_progress_{};
     bool vblank_active_ = false;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::hardware::dma

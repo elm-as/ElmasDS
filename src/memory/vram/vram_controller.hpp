@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <span>
 #include <vector>
 
@@ -48,6 +49,7 @@ public:
     [[nodiscard]] u8 read_arm9_8(Address address) const noexcept;
     [[nodiscard]] u16 read_arm9_16(Address address) const noexcept;
     [[nodiscard]] u32 read_arm9_32(Address address) const noexcept;
+    [[nodiscard]] u32 read_arm9_32_fast(Address address) const noexcept;
 
     void write_arm9_8(Address address, u8 value) noexcept;
     void write_arm9_16(Address address, u16 value) noexcept;
@@ -80,9 +82,50 @@ private:
     [[nodiscard]] bool matches_arm7(std::size_t index,
                                     Address address,
                                     Address& bank_offset) const noexcept;
+    [[nodiscard]] u8 read_arm9_8_overlap(Address address) const noexcept;
+    [[nodiscard]] u16 read_arm9_16_overlap(Address address) const noexcept;
+    void rebuild_arm9_page_table() noexcept;
 
     std::array<std::vector<u8>, kBankCount> banks_;
     std::array<u8, kBankCount> vram_cnt_{};
+    std::array<u8*, 512U> arm9_pages_{};
+    bool has_arm9_overlap_ = false;
 };
+
+[[nodiscard]] inline u8 VramController::read_arm9_8(Address address) const noexcept {
+    if (!has_arm9_overlap_ && address < 0x06800000U) {
+        const Address masked = 0x06000000U | (address & 0x0067FFFFU);
+        const u8* page = arm9_pages_[(masked - 0x06000000U) >> 14U];
+        return (page != nullptr) ? page[masked & 0x3FFFU] : 0U;
+    }
+    return read_arm9_8_overlap(address);
+}
+
+[[nodiscard]] inline u16 VramController::read_arm9_16(Address address) const noexcept {
+    if (!has_arm9_overlap_ && address < 0x06800000U) {
+        const Address masked = 0x06000000U | (address & 0x0067FFFFU);
+        const u8* page = arm9_pages_[(masked - 0x06000000U) >> 14U];
+        if (page == nullptr) {
+            return 0U;
+        }
+        const Address off = masked & 0x3FFEU;
+        return static_cast<u16>(page[off]) | (static_cast<u16>(page[off + 1U]) << 8U);
+    }
+    return read_arm9_16_overlap(address);
+}
+
+[[nodiscard]] inline u32 VramController::read_arm9_32_fast(Address address) const noexcept {
+    if (!has_arm9_overlap_ && address < 0x06800000U) {
+        const Address masked = 0x06000000U | (address & 0x0067FFFFU);
+        const u8* page = arm9_pages_[(masked - 0x06000000U) >> 14U];
+        if (page == nullptr) {
+            return 0U;
+        }
+        u32 value = 0U;
+        std::memcpy(&value, page + (masked & 0x3FFCU), sizeof(value));
+        return value;
+    }
+    return read_arm9_32(address);
+}
 
 }  // namespace elmasds::memory

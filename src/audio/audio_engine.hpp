@@ -5,6 +5,7 @@
 #include "cpu/arm_architecture/bus_interface.hpp"
 #include "memory/mmio/mmio_device.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 
 #include <array>
 #include <cstddef>
@@ -42,6 +43,7 @@ public:
      * @brief Drains up to `max_samples` interleaved `i16` values `(L, R, L, R...)` from buffer.
      */
     [[nodiscard]] std::vector<i16> drain_samples(std::size_t max_samples = kMaxBufferedSamples);
+    void drain_all_into(std::vector<i16>& out) noexcept;
 
     [[nodiscard]] std::span<const i16> buffered_samples() const noexcept { return sample_buffer_; }
     [[nodiscard]] u16 soundcnt() const noexcept { return soundcnt_; }
@@ -54,6 +56,7 @@ public:
     void restore_state(u16 soundcnt,
                        u16 soundbias,
                        const std::array<AudioChannelState, kAudioChannelCount>& channels) noexcept;
+    void set_profiler(primitives::PerformanceProfiler* profiler) noexcept { profiler_ = profiler; }
 
 private:
     void on_sample_tick(TickCount late_ticks);
@@ -72,6 +75,7 @@ private:
     u8 sndcap0_cnt_ = 0U;
     u8 sndcap1_cnt_ = 0U;
     std::vector<i16> sample_buffer_;
+    primitives::PerformanceProfiler* profiler_ = nullptr;
 };
 
 }  // namespace elmasds::audio

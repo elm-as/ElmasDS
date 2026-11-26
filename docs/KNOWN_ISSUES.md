@@ -1,8 +1,7 @@
 # ElmasDS — Known Issues & Limitations
 
 ## Runtime Issues
-- **Performance / Frame Stutter & Choppy Audio on Commercial ROMs**: The pure scalar CPU interpreter loop and per-tick scheduling overhead cause frame-pacing stutter and choppy `SDL_AudioStream` playback under load on commercial titles (observed on *Pokémon - Version Or HeartGold (France)*).
-- **Post-Intro Freeze in Pokémon HeartGold**: Direct boot + HLE BIOS advances past NitroSDK init to the `"Developed by GAME FREAK inc."` intro screen, then freezes/stalls shortly afterward; further hardware/timing investigation is pending.
+- **Pokémon HeartGold In-Game Input & Save Persistence**: Halted-CPU idle-skip (`can_skip_halt()`), inline O(1) VRAM page table lookup, optimized 2D scanline renderer/compositor, 59.83 Hz frame pacing, bounded `SDL_AudioStream` queuing, `Flash512KB` + NTR-031 IR (`0x08`/`0x00`), `GeometryFifo` DMA immediate-start/re-entrancy guard, level-triggered `GXFIFO` IRQ evaluation on HBlank, and 3D texture formats (`1/2/3/4/6/7` + VRAM banks E/F/G) resolved the ~24 FPS stutter, post-Game-Freak-logo stall, and post-forest `0x20C2458` 3D intro freeze (sustaining **68.5 FPS** across 2500 frames with `1,229` rendered 3D polygons in Release testing). Interactive title/gameplay progression and save persistence remain to be verified.
 
 ## Architectural Limitations
 - **Cartridge KEY1/KEY2 Blowfish encryption**: Only direct `.nds` boot (`Emulator::direct_boot()`) and unencrypted/decrypted cartridge reads (`0xB7`) are implemented. Full cold-boot from encrypted BIOS/firmware into encrypted `KEY1` commands is out of scope for direct-boot usage.

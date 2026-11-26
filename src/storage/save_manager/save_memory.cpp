@@ -47,7 +47,7 @@ Status SaveMemory::attach_file(const std::filesystem::path& path, SaveType type_
         SaveType resolved = (type_hint != SaveType::None) ? type_hint
                                                           : detect_save_type_from_size(file_size);
         if (resolved == SaveType::None) {
-            resolved = SaveType::Flash256KB;
+            resolved = SaveType::Flash512KB;
         }
         configure(resolved);
 
@@ -62,7 +62,7 @@ Status SaveMemory::attach_file(const std::filesystem::path& path, SaveType type_
         return Status::ok();
     }
 
-    const SaveType resolved = (type_hint != SaveType::None) ? type_hint : SaveType::Flash256KB;
+    const SaveType resolved = (type_hint != SaveType::None) ? type_hint : SaveType::Flash512KB;
     configure(resolved);
     return Status::ok();
 }
@@ -113,29 +113,45 @@ u8 SaveMemory::transfer(u8 tx_byte, bool hold_chip_select) {
         case State::Idle:
             response = handle_command(tx_byte);
             break;
+        case State::IrReadId:
+            response = 0xAAU;
+            break;
         case State::ReadStatus:
             response = write_enabled_ ? 0x02U : 0x00U;
             break;
+        case State::WriteStatus:
+            write_enabled_ = false;
+            state_ = State::Idle;
+            response = 0U;
+            break;
         case State::ReadJedecId: {
-            static constexpr std::array<u8, 3U> kJedec = {0x20U, 0x40U, 0x13U};
-            response = (jedec_index_ < kJedec.size()) ? kJedec[jedec_index_++] : 0x00U;
+            const u8 cap_id = (type_ == SaveType::Flash256KB) ? 0x12U
+                            : (type_ == SaveType::Flash1MB)   ? 0x14U
+                                                              : 0x13U;
+            const std::array<u8, 3U> jedec = {0x20U, 0x40U, cap_id};
+            response = (jedec_index_ < jedec.size()) ? jedec[jedec_index_++] : 0x00U;
             break;
         }
         case State::ReadAddress:
+        case State::FastReadAddress:
         case State::WriteAddress:
         case State::PageEraseAddress:
+        case State::SubsectorEraseAddress:
+        case State::SectorEraseAddress:
             address_ = (address_ << 8U) | tx_byte;
             ++address_bytes_received_;
             if (address_bytes_received_ >= address_byte_count()) {
-                if (state_ == State::ReadAddress) {
-                    state_ = State::ReadData;
-                } else if (state_ == State::WriteAddress) {
-                    state_ = State::WriteData;
-                } else {
-                    erase_page(address_);
-                    state_ = State::Idle;
-                }
+                if (state_ == State::ReadAddress) { state_ = State::ReadData; }
+                else if (state_ == State::FastReadAddress) { state_ = State::FastReadDummy; }
+                else if (state_ == State::WriteAddress) { state_ = State::WriteData; }
+                else if (state_ == State::PageEraseAddress) { erase_region(~0xFFU, 256U); state_ = State::Idle; }
+                else if (state_ == State::SubsectorEraseAddress) { erase_region(~0xFFFU, 0x1000U); state_ = State::Idle; }
+                else { erase_region(~0xFFFFU, 0x10000U); state_ = State::Idle; }
             }
+            response = 0U;
+            break;
+        case State::FastReadDummy:
+            state_ = State::ReadData;
             response = 0U;
             break;
         case State::ReadData:
@@ -193,8 +209,20 @@ u8 SaveMemory::handle_command(u8 command) noexcept {
     }
 
     switch (command) {
+        case 0x00U:  // NTR-031 Infrared passthrough to Flash (next byte is Flash command)
+            state_ = State::Idle;
+            return 0U;
+        case 0x08U:  // NTR-031 Infrared status/ID (returns 0xAA)
+            state_ = State::IrReadId;
+            return 0U;
+        case 0x01U:  // Write Status Register
+            state_ = State::WriteStatus;
+            return 0U;
         case 0x03U:  // Read Data
             state_ = State::ReadAddress;
+            return 0U;
+        case 0x0BU:  // Fast Read Data (Flash)
+            state_ = State::FastReadAddress;
             return 0U;
         case 0x02U:  // Page Program / EEPROM Write
         case 0x0AU:  // Flash Page Write
@@ -212,8 +240,14 @@ u8 SaveMemory::handle_command(u8 command) noexcept {
         case 0x9FU:  // Read JEDEC ID
             state_ = State::ReadJedecId;
             return 0U;
+        case 0x20U:  // Subsector Erase (4 KiB)
+            state_ = State::SubsectorEraseAddress;
+            return 0U;
         case 0xDBU:  // Page Erase (256 bytes)
             state_ = State::PageEraseAddress;
+            return 0U;
+        case 0xD8U:  // Sector Erase (64 KiB)
+            state_ = State::SectorEraseAddress;
             return 0U;
         default:
             state_ = State::Idle;
@@ -221,12 +255,12 @@ u8 SaveMemory::handle_command(u8 command) noexcept {
     }
 }
 
-void SaveMemory::erase_page(u32 address) noexcept {
+void SaveMemory::erase_region(u32 base_mask, std::size_t region_size) noexcept {
     if (!write_enabled_ || storage_.empty()) {
         return;
     }
-    const std::size_t base = (address & ~0xFFU) % storage_.size();
-    const std::size_t end = std::min(base + 256U, storage_.size());
+    const std::size_t base = (address_ & base_mask) % storage_.size();
+    const std::size_t end = std::min(base + region_size, storage_.size());
     std::fill(storage_.begin() + static_cast<std::ptrdiff_t>(base),
               storage_.begin() + static_cast<std::ptrdiff_t>(end), u8{0xFF});
     dirty_ = true;

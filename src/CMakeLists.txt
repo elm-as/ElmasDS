@@ -58,6 +58,8 @@ add_library(
         input/input_mapping.cpp
         audio/audio_engine.cpp
         frontend/window/display_layout.cpp
+        frontend/overlay/menu_bar.cpp
+        frontend/application/screenshot_writer.cpp
 )
 
 target_include_directories(
@@ -72,6 +74,11 @@ if(ELMASDS_BUILD_FRONTEND)
     add_executable(
         elmasds
         frontend/application/main.cpp
+        frontend/application/app_actions.cpp
+        frontend/application/menu_actions.cpp
+        frontend/application/diag_runner.cpp
+        frontend/application/profile_audit_runner.cpp
+        frontend/overlay/hud_overlay.cpp
         frontend/renderer/gl_screen_renderer.cpp
     )
 

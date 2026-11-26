@@ -22,6 +22,7 @@
 #include "memory/memory_bus/memory_system.hpp"
 #include "primitives/diagnostic_log.hpp"
 #include "primitives/fixed_width_types.hpp"
+#include "primitives/performance_profiler.hpp"
 #include "primitives/status_result.hpp"
 #include "storage/save_states/save_state.hpp"
 
@@ -149,6 +150,10 @@ public:
     [[nodiscard]] const hardware::cartridge::CartridgeController& cartridge() const noexcept {
         return cartridge_;
     }
+    [[nodiscard]] primitives::PerformanceProfiler& profiler() noexcept { return profiler_; }
+    [[nodiscard]] const primitives::PerformanceProfiler& profiler() const noexcept {
+        return profiler_;
+    }
 
 private:
     using ImageLoader = Status (Emulator::*)(std::span<const u8>);
@@ -170,6 +175,7 @@ private:
 
     EmulatorConfig config_;
     DiagnosticLog diagnostics_;
+    primitives::PerformanceProfiler profiler_;
     EventScheduler scheduler_;
 
     memory::MemorySystem memory_;

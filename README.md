@@ -15,7 +15,7 @@
   - `src/gpu/`: Scanline-accurate 2D engines A & B (`engines_2d/`), 3D Geometry Engine & Software Rasterizer (`engine_3d/`), `DISPSTAT`/`VCOUNT`/`POWCNT1` timing.
   - `src/input/` & `src/audio/`: `KEYINPUT`/`KEYCNT`/`EXTKEYIN`, customizable keymap with conflict checks & file persistence, and 16-channel 32,768 Hz stereo PCM/ADPCM/PSG/Noise mixer.
   - `src/storage/`: `.nds` ROM parser with CRC-16 validation, EEPROM/Flash/SRAM save persistence, firmware/BIOS loader, and `.ess` binary save states.
-- `elmasds`: Minimalist SDL3 + OpenGL 3.3 Core frontend displaying the dual 256×192 screens with `GL_NEAREST` integer scaling, keyboard mapping, shortcuts, mouse-driven stylus touch, drag-and-drop ROM loading, and `SDL_AudioStream` output.
+- `elmasds`: Clean SDL3 + OpenGL 3.3 Core frontend featuring a French desktop menu bar (`Fichier`, `Émulation`, `Affichage`, `Outils`, `Paramètres`), a launch welcome screen with clickable ROM picker, multi-layout dual screens (`Vertical`, `Side-by-Side`, `Hybrid`), GLSL DS LCD grid & color correction shaders, native `Ctrl+O` ROM picker, on-demand `Escape` menu, `F3` perf/3D telemetry HUD, `Tab` Fast-Forward, `Backspace` Rewind, `M` audio mute toggle, 8 Save State slots, `F12` BMP screenshots, keyboard/stylus input, and `SDL_AudioStream` output.
 
 ## Default Controls & Shortcuts
 
@@ -26,11 +26,19 @@
 | Shoulder Buttons (`L` / `R`) | `Q` / `E` |
 | `Start` / `Select` | `Enter` / `Right Shift` |
 | Touchscreen / Stylus | Left Mouse Button on Bottom Screen |
+| On-Demand Menu | `Escape` |
+| Open ROM (Native File Dialog) / Drag & Drop | `Ctrl + O` |
 | Pause / Resume | `Space` |
+| Mute / Unmute Host Audio | `M` |
+| Fast-Forward (`2x` / `4x`) | Hold `Tab` |
+| Instant Rewind | Hold `Backspace` |
+| Save State Slot Select (`1..8`) / Save / Load | `1`–`8`, `F5` / `F7` |
+| Cycle Shader Filter (Sharp / LCD Grid / DS Color) | `F2` |
+| Perf & 3D Telemetry HUD Toggle | `F3` |
+| Cycle Screen Layout / Swap Screens | `F6` / `F8` |
+| Capture Dual-Screen BMP Screenshot | `F12` |
 | Reset Console | `Ctrl + R` |
-| Save State / Load State (`.ess`) | `F5` / `F7` |
-| Fullscreen Toggle | `F11` |
-| Quit | `Escape` or `Alt + F4` |
+| Fullscreen Toggle / Quit | `F11` / `Alt + F4` |
 
 Custom key bindings can be configured via `elmasds_input.cfg` in the working directory.
 
@@ -60,6 +68,9 @@ ctest --preset linux-gcc-debug --output-on-failure
 
 # Boot an NDS ROM file directly (or drag-and-drop a .nds file onto the window)
 .\build\windows-msvc-debug\src\Debug\elmasds.exe path\to\homebrew.nds
+
+# Run the silent 3-scenario performance audit profiler
+.\build\windows-msvc-debug\src\Release\elmasds.exe --profile-audit path\to\rom.nds
 ```
 
 ## Proprietary Files Notice
@@ -72,5 +83,6 @@ ElmasDS does **not** include Nintendo DS ROMs, BIOS dumps, or firmware files. Di
 - [Implementation Roadmap](docs/IMPLEMENTATION_ROADMAP.md)
 - [Known Issues](docs/KNOWN_ISSUES.md)
 - [Compatibility Matrix](docs/COMPATIBILITY.md)
+- [Performance Audit & Optimization Report](docs/performance/PERFORMANCE_AUDIT.md)
 - [Architecture Decision Records](docs/decisions/)
 - [Contributing Guidelines](CONTRIBUTING.md)

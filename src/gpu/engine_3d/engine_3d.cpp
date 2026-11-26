@@ -15,8 +15,8 @@ Engine3D::Engine3D(const memory::MemorySystem& memory,
       arm9_dma_(arm9_dma),
       color_buffer_(kScreenWidth * kScreenHeight, 0U),
       depth_buffer_(kScreenWidth * kScreenHeight, 0x7FFFFFFF) {
-    submit_polygons_.reserve(256U);
-    render_polygons_.reserve(256U);
+    submit_polygons_.reserve(kMaxPolygons);
+    render_polygons_.reserve(kMaxPolygons);
     reset();
 }
 
@@ -38,7 +38,7 @@ void Engine3D::reset() noexcept {
     tex_stack_ = Matrix4x4::identity();
     clip_mtx_ = Matrix4x4::identity();
 
-    cmd_queue_.clear();
+    clear_cmds();
     active_cmd_ = 0U;
     active_needed_params_ = 0U;
     active_param_index_ = 0U;
@@ -157,6 +157,7 @@ void Engine3D::write16(Address address, u16 value) noexcept {
 }
 
 void Engine3D::write32(Address address, u32 value) noexcept {
+    primitives::ScopedProfile profile_3d(profiler_, primitives::ProfileCategory::Gpu3d);
     const Address aligned = address & ~3U;
     if (aligned == kDisp3dCntStart) {
         write16(kDisp3dCntStart, static_cast<u16>(value & 0xFFFFU));
@@ -180,7 +181,7 @@ void Engine3D::write32(Address address, u32 value) noexcept {
         return;
     }
     if (aligned >= kRegGxFifoStart && aligned <= kRegGxFifoEnd) {
-        if (active_needed_params_ > 0U || !cmd_queue_.empty()) {
+        if (active_needed_params_ > 0U || has_cmds()) {
             submit_parameter(value);
         } else {
             enqueue_packed_commands(value);
@@ -209,12 +210,11 @@ void Engine3D::enqueue_packed_commands(u32 packed_cmds) noexcept {
     for (u32 shift = 0U; shift < 32U; shift += 8U) {
         const u8 cmd = static_cast<u8>((packed_cmds >> shift) & 0xFFU);
         if (cmd != 0U) {
-            cmd_queue_.push_back(cmd);
+            push_cmd(cmd);
         }
     }
-    while (active_needed_params_ == 0U && !cmd_queue_.empty()) {
-        const u8 next_cmd = cmd_queue_.front();
-        cmd_queue_.pop_front();
+    while (active_needed_params_ == 0U && has_cmds()) {
+        const u8 next_cmd = pop_cmd();
         const u8 needed = param_count_for_command(next_cmd);
         if (needed == 0U) {
             execute_command(next_cmd, {});
@@ -228,11 +228,10 @@ void Engine3D::enqueue_packed_commands(u32 packed_cmds) noexcept {
 
 void Engine3D::submit_parameter(u32 param) noexcept {
     if (active_needed_params_ == 0U) {
-        if (cmd_queue_.empty()) {
+        if (!has_cmds()) {
             return;
         }
-        active_cmd_ = cmd_queue_.front();
-        cmd_queue_.pop_front();
+        active_cmd_ = pop_cmd();
         active_needed_params_ = param_count_for_command(active_cmd_);
         active_param_index_ = 0U;
     }
@@ -248,9 +247,8 @@ void Engine3D::submit_parameter(u32 param) noexcept {
     execute_command(active_cmd_, std::span<const u32>(active_params_.data(), active_needed_params_));
     active_needed_params_ = 0U;
     active_param_index_ = 0U;
-    while (active_needed_params_ == 0U && !cmd_queue_.empty()) {
-        const u8 next_cmd = cmd_queue_.front();
-        cmd_queue_.pop_front();
+    while (active_needed_params_ == 0U && has_cmds()) {
+        const u8 next_cmd = pop_cmd();
         const u8 needed = param_count_for_command(next_cmd);
         if (needed == 0U) {
             execute_command(next_cmd, {});

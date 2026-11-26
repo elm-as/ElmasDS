@@ -120,6 +120,7 @@ void TimerController::sync_channel(std::size_t index) {
     if (!ch.is_running() || ch.is_cascaded(index)) {
         return;
     }
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Timers);
     const TickCount now = scheduler_.current_tick();
     if (now <= ch.last_sync_tick) {
         return;
@@ -201,6 +202,7 @@ void TimerController::cancel_channel_event(std::size_t index) {
 }
 
 void TimerController::handle_overflow(std::size_t index, TickCount late_ticks) {
+    primitives::ScopedProfile profile_scope(profiler_, primitives::ProfileCategory::Timers);
     TimerChannel& ch = channels_[index];
     if (!ch.is_running() || ch.is_cascaded(index)) {
         return;
