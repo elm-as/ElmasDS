@@ -37,13 +37,22 @@ enum class MenuAction : u8 {
 };
 
 /**
- * @brief Axis-aligned rectangle in the 512x384 overlay coordinate space.
+ * @brief Axis-aligned rectangle in the adaptive overlay coordinate space.
  */
 struct MenuBarRect {
     i32 x = 0;
     i32 y = 0;
     i32 w = 0;
     i32 h = 0;
+};
+
+/**
+ * @brief Pointer coordinates plus active overlay canvas width for hit testing.
+ */
+struct OverlayPointer {
+    i32 x = 0;
+    i32 y = 0;
+    i32 canvas_w = 512;
 };
 
 /**
@@ -56,11 +65,9 @@ struct MenuBarHit {
     bool consumed = false;
 };
 
-inline constexpr i32 kMenuBarHeight = 18;
+inline constexpr i32 kMenuBarHeight = 24;
 inline constexpr i32 kTopMenuCount = 5;
-inline constexpr i32 kDropdownItemHeight = 18;
-inline constexpr MenuBarRect kWelcomeOpenButton{126, 120, 260, 28};
-inline constexpr MenuBarRect kControlsCloseButton{206, 314, 100, 20};
+inline constexpr i32 kDropdownItemHeight = 22;
 
 /**
  * @brief Returns true when `(x, y)` falls strictly inside `rect`.
@@ -83,9 +90,21 @@ inline constexpr MenuBarRect kControlsCloseButton{206, 314, 100, 20};
 [[nodiscard]] i32 dropdown_item_count(i32 menu_index) noexcept;
 
 /**
- * @brief Returns the overlay-space rectangle bounding the open dropdown panel.
+ * @brief Returns the overlay-space rectangle bounding the open dropdown panel, clamped to `canvas_w`.
  */
-[[nodiscard]] MenuBarRect dropdown_panel_rect(i32 menu_index) noexcept;
+[[nodiscard]] MenuBarRect dropdown_panel_rect(i32 menu_index, i32 canvas_w = 512) noexcept;
+
+/**
+ * @brief Returns centered layout geometry for the no-ROM welcome card and primary action button.
+ */
+[[nodiscard]] MenuBarRect welcome_card_rect(i32 canvas_w, i32 canvas_h) noexcept;
+[[nodiscard]] MenuBarRect welcome_open_button_rect(i32 canvas_w, i32 canvas_h) noexcept;
+
+/**
+ * @brief Returns centered layout geometry for the keyboard controls modal and its close button.
+ */
+[[nodiscard]] MenuBarRect controls_modal_rect(i32 canvas_w, i32 canvas_h) noexcept;
+[[nodiscard]] MenuBarRect controls_close_button_rect(i32 canvas_w, i32 canvas_h) noexcept;
 
 /**
  * @brief Returns the uppercase French label for a dropdown item.
@@ -101,5 +120,6 @@ inline constexpr MenuBarRect kControlsCloseButton{206, 314, 100, 20};
  * @brief Performs resolution-independent hit testing on the menu bar and active dropdown.
  */
 [[nodiscard]] MenuBarHit hit_test_menu_bar(i32 ox, i32 oy, i32 open_menu) noexcept;
+[[nodiscard]] MenuBarHit hit_test_menu_bar_canvas(OverlayPointer ptr, i32 open_menu) noexcept;
 
 }  // namespace elmasds::frontend

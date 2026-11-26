@@ -44,9 +44,25 @@ public:
                 std::span<const u32> bottom_pixels) noexcept;
 
     /**
-     * @brief Draws an alpha-blended full-window RGBA8888 overlay buffer over the DS screens.
+     * @brief Parameters for blitting the software overlay buffer over the full host window.
      */
-    void render_overlay(std::span<const u32> rgba_pixels, i32 width, i32 height) noexcept;
+    struct OverlayBlit {
+        std::span<const u32> pixels;
+        i32 tex_w = 0;
+        i32 tex_h = 0;
+        i32 win_w = 0;
+        i32 win_h = 0;
+    };
+
+    /**
+     * @brief Clears the entire host window with the ElmasCore obsidian backdrop.
+     */
+    void clear_backdrop(i32 window_width, i32 window_height) noexcept;
+
+    /**
+     * @brief Draws an alpha-blended full-window RGBA8888 overlay buffer over the host window.
+     */
+    void render_overlay(const OverlayBlit& blit) noexcept;
 
 private:
     void draw_screen_quad(const ScreenRect& rect,

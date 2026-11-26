@@ -7,12 +7,13 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace elmasds::frontend {
 
 /**
- * @brief Snapshot of emulator & UI state rendered lazily onto the on-demand overlay.
+ * @brief Snapshot of emulator & UI state rendered onto the adaptive RGBA8888 overlay.
  */
 struct HudState {
     bool menu_open = false;
@@ -47,15 +48,25 @@ struct HudState {
 };
 
 /**
- * @brief Software RGBA8888 renderer for the on-demand Esc menu, F3 perf strip, and status toasts.
+ * @brief Adaptive-resolution software RGBA8888 renderer for menu bar, welcome UI, HUD, and modals.
  */
 class HudOverlay final {
 public:
-    static constexpr i32 kWidth = 512;
-    static constexpr i32 kHeight = 384;
     static constexpr i32 kMenuItemCount = 12;
 
     HudOverlay();
+
+    /**
+     * @brief Computes integer UI scale (`1` or `2`) so text and bars stay crisp at high resolution.
+     */
+    [[nodiscard]] static i32 compute_ui_scale(i32 pixel_w, i32 pixel_h) noexcept {
+        return (pixel_w >= 1100 && pixel_h >= 720) ? 2 : 1;
+    }
+
+    /**
+     * @brief Resizes the internal RGBA8888 canvas to match the host aspect ratio.
+     */
+    void resize(i32 width, i32 height) noexcept;
 
     /**
      * @brief Renders active overlay elements; returns false when nothing needs to be drawn.
@@ -70,13 +81,14 @@ public:
     };
 
     [[nodiscard]] std::span<const u32> pixels() const noexcept { return buffer_; }
-    [[nodiscard]] i32 width() const noexcept { return kWidth; }
-    [[nodiscard]] i32 height() const noexcept { return kHeight; }
+    [[nodiscard]] i32 width() const noexcept { return width_; }
+    [[nodiscard]] i32 height() const noexcept { return height_; }
 
 private:
     void fill_rect(UiRect rect, u32 color) noexcept;
     void stroke_rect(UiRect rect, u32 color) noexcept;
     void draw_text(std::string_view text, UiRect anchor, u32 color) noexcept;
+    void draw_text_centered(std::string_view text, UiRect bounds, u32 color) noexcept;
     void draw_perf_strip(const HudState& state) noexcept;
     void draw_toast(std::string_view text) noexcept;
     void draw_menu(const HudState& state) noexcept;
@@ -85,6 +97,8 @@ private:
     void draw_welcome_screen(const HudState& state) noexcept;
     void draw_controls_help() noexcept;
 
+    i32 width_ = 512;
+    i32 height_ = 384;
     std::vector<u32> buffer_;
 };
 

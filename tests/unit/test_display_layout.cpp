@@ -119,7 +119,7 @@ TEST(RewindAndScreenshotTest, RewindRingBufferAndDualScreenBmpWriterWork) {
     EXPECT_EQ(sig[0], 'B');
     EXPECT_EQ(sig[1], 'M');
     in.close();
-    const auto open_hit = hit_test_menu_bar(20, 8, -1);
+    const auto open_hit = hit_test_menu_bar(20, 10, -1);
     EXPECT_TRUE(open_hit.consumed);
     EXPECT_EQ(open_hit.menu_index, 0);
     EXPECT_EQ(top_menu_label(0), "FICHIER");
@@ -128,18 +128,21 @@ TEST(RewindAndScreenshotTest, RewindRingBufferAndDualScreenBmpWriterWork) {
     EXPECT_TRUE(item_hit.consumed);
     EXPECT_EQ(item_hit.action, MenuAction::OpenRom);
 
-    const auto x2_hit = hit_test_menu_bar(80, kMenuBarHeight + 4 + kDropdownItemHeight, 1);
+    const auto x2_hit = hit_test_menu_bar(80, kMenuBarHeight + 5 + kDropdownItemHeight, 1);
     EXPECT_TRUE(x2_hit.consumed);
     EXPECT_EQ(x2_hit.action, MenuAction::ToggleSpeed2x);
 
-    const auto x4_hit = hit_test_menu_bar(80, kMenuBarHeight + 4 + (2 * kDropdownItemHeight), 1);
+    const auto x4_hit = hit_test_menu_bar(80, kMenuBarHeight + 5 + (2 * kDropdownItemHeight), 1);
     EXPECT_TRUE(x4_hit.consumed);
     EXPECT_EQ(x4_hit.action, MenuAction::ToggleSpeed4x);
 
     const auto outside_hit = hit_test_menu_bar(480, 300, 0);
     EXPECT_TRUE(outside_hit.consumed);
     EXPECT_EQ(outside_hit.action, MenuAction::CloseOverlays);
-    EXPECT_TRUE(point_in_rect(kWelcomeOpenButton, 200, 130));
+    const auto btn_tall = welcome_open_button_rect(512, 824);
+    EXPECT_TRUE(point_in_rect(btn_tall, 256, btn_tall.y + 16));
+    const auto btn_wide = welcome_open_button_rect(960, 540);
+    EXPECT_EQ(btn_wide.x + (btn_wide.w / 2), 480);
     std::error_code ec;
     std::filesystem::remove(path, ec);
 }

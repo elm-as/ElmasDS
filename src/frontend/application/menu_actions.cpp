@@ -17,10 +17,10 @@ struct OverlayPoint {
     if (app.window != nullptr) {
         SDL_GetWindowSize(app.window, &win_w, &win_h);
     }
-    const i32 ox = static_cast<i32>((pt_win.x * static_cast<float>(HudOverlay::kWidth)) /
-                                    static_cast<float>(std::max(1, win_w)));
-    const i32 oy = static_cast<i32>((pt_win.y * static_cast<float>(HudOverlay::kHeight)) /
-                                    static_cast<float>(std::max(1, win_h)));
+    const i32 cw = app.overlay.width();
+    const i32 ch = app.overlay.height();
+    const i32 ox = static_cast<i32>((pt_win.x * static_cast<float>(cw)) / static_cast<float>(std::max(1, win_w)));
+    const i32 oy = static_cast<i32>((pt_win.y * static_cast<float>(ch)) / static_cast<float>(std::max(1, win_h)));
     return {ox, oy};
 }
 
@@ -116,16 +116,18 @@ void execute_menu_action(AppState& app, core::Emulator& emu, MenuAction action) 
 
 bool handle_overlay_mouse_down(AppState& app, core::Emulator& emu, SDL_FPoint pt_win) {
     const OverlayPoint pt = window_to_overlay(app, pt_win);
+    const i32 cw = app.overlay.width();
+    const i32 ch = app.overlay.height();
     if (app.controls_help_open) {
-        if (point_in_rect(kControlsCloseButton, pt.x, pt.y) ||
-            !point_in_rect({46, 44, 420, 300}, pt.x, pt.y)) {
+        if (point_in_rect(controls_close_button_rect(cw, ch), pt.x, pt.y) ||
+            !point_in_rect(controls_modal_rect(cw, ch), pt.x, pt.y)) {
             app.controls_help_open = false;
         }
         return true;
     }
 
     if (!app.fullscreen || app.open_dropdown >= 0) {
-        const MenuBarHit hit = hit_test_menu_bar(pt.x, pt.y, app.open_dropdown);
+        const MenuBarHit hit = hit_test_menu_bar_canvas({pt.x, pt.y, cw}, app.open_dropdown);
         if (hit.consumed) {
             if (hit.menu_index >= 0 && hit.item_index < 0) {
                 app.open_dropdown = (app.open_dropdown == hit.menu_index) ? -1 : hit.menu_index;
@@ -139,7 +141,8 @@ bool handle_overlay_mouse_down(AppState& app, core::Emulator& emu, SDL_FPoint pt
         }
     }
 
-    if (app.loaded_rom_path.empty() && !app.menu_open && point_in_rect(kWelcomeOpenButton, pt.x, pt.y)) {
+    if (app.loaded_rom_path.empty() && !app.menu_open &&
+        point_in_rect(welcome_open_button_rect(cw, ch), pt.x, pt.y)) {
         open_rom_dialog(app);
         return true;
     }
@@ -148,8 +151,10 @@ bool handle_overlay_mouse_down(AppState& app, core::Emulator& emu, SDL_FPoint pt
 
 void handle_overlay_mouse_move(AppState& app, SDL_FPoint pt_win) noexcept {
     const OverlayPoint pt = window_to_overlay(app, pt_win);
-    app.hover_welcome_btn =
-        app.loaded_rom_path.empty() && !app.menu_open && point_in_rect(kWelcomeOpenButton, pt.x, pt.y);
+    const i32 cw = app.overlay.width();
+    const i32 ch = app.overlay.height();
+    app.hover_welcome_btn = app.loaded_rom_path.empty() && !app.menu_open &&
+                            point_in_rect(welcome_open_button_rect(cw, ch), pt.x, pt.y);
 
     if (app.fullscreen && app.open_dropdown < 0) {
         app.hover_menu = -1;
@@ -157,7 +162,7 @@ void handle_overlay_mouse_move(AppState& app, SDL_FPoint pt_win) noexcept {
         return;
     }
 
-    const MenuBarHit hit = hit_test_menu_bar(pt.x, pt.y, app.open_dropdown);
+    const MenuBarHit hit = hit_test_menu_bar_canvas({pt.x, pt.y, cw}, app.open_dropdown);
     if (hit.menu_index >= 0 && hit.item_index < 0 && pt.y < kMenuBarHeight) {
         app.hover_menu = hit.menu_index;
         app.hover_item = -1;

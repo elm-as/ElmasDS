@@ -38,7 +38,8 @@ bool initialize_sdl(elmasds::frontend::AppState& app) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     const int init_w = static_cast<int>(elmasds::kScreenWidth) * kDefaultScale;
-    const int init_h = static_cast<int>(elmasds::kDualScreenHeight + app.native_gap) * kDefaultScale + 36;
+    const int init_h = static_cast<int>(elmasds::kDualScreenHeight + app.native_gap) * kDefaultScale +
+                       elmasds::frontend::kMenuBarHeight;
     app.window = SDL_CreateWindow("ElmasDS", init_w, init_h,
                                   SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (app.window == nullptr) { std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << '\n'; return false; }
@@ -58,13 +59,19 @@ void update_stylus_touch(elmasds::frontend::AppState& app,
                          elmasds::core::Emulator& emu,
                          const elmasds::frontend::DualScreenLayout& layout,
                          SDL_FPoint pt_win) {
-    if (!app.mouse_down || app.menu_open) {
+    if (!app.mouse_down || app.menu_open || app.controls_help_open || app.loaded_rom_path.empty()) {
         emu.set_touch_pixel(0U, 0U, false);
         return;
     }
+    int win_w = 1, win_h = 1, pix_w = 1, pix_h = 1;
+    SDL_GetWindowSize(app.window, &win_w, &win_h);
+    SDL_GetWindowSizeInPixels(app.window, &pix_w, &pix_h);
+    const elmasds::i32 px = static_cast<elmasds::i32>((pt_win.x * static_cast<float>(pix_w)) /
+                                                       static_cast<float>(std::max(1, win_w)));
+    const elmasds::i32 py = static_cast<elmasds::i32>((pt_win.y * static_cast<float>(pix_h)) /
+                                                       static_cast<float>(std::max(1, win_h)));
     const auto pt = elmasds::frontend::map_window_point_to_touch(
-        layout, elmasds::frontend::WindowPoint{static_cast<elmasds::i32>(pt_win.x),
-                                               static_cast<elmasds::i32>(pt_win.y)});
+        layout, elmasds::frontend::WindowPoint{px, py});
     emu.set_touch_pixel(pt ? pt->x : 0U, pt ? pt->y : 0U, pt.has_value());
 }
 
@@ -135,7 +142,7 @@ int main(int argc, char* argv[]) {
     bool profile_audit = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
-        if (arg == "--version") { std::cout << "ElmasDS 1.0.0\n"; return 0; }
+        if (arg == "--version") { std::cout << "ElmasDS 1.0.1\n"; return 0; }
         if (arg == "--headless-check") {
             elmasds::core::Emulator emu;
             emu.step_ticks(1024);
@@ -171,10 +178,9 @@ int main(int argc, char* argv[]) {
         int pixel_w = 0;
         int pixel_h = 0;
         SDL_GetWindowSizeInPixels(app.window, &pixel_w, &pixel_h);
-        const elmasds::i32 top_inset = app.fullscreen
-            ? 0
-            : std::max(18, (pixel_h * elmasds::frontend::kMenuBarHeight) /
-                               elmasds::frontend::HudOverlay::kHeight);
+        const elmasds::i32 ui_scale = elmasds::frontend::HudOverlay::compute_ui_scale(pixel_w, pixel_h);
+        app.overlay.resize(std::max(360, pixel_w / ui_scale), std::max(260, pixel_h / ui_scale));
+        const elmasds::i32 top_inset = app.fullscreen ? 0 : (elmasds::frontend::kMenuBarHeight * ui_scale);
         const auto layout = elmasds::frontend::compute_dual_screen_layout(elmasds::frontend::LayoutRequest{
             pixel_w, pixel_h, app.native_gap, true, app.layout_mode, app.swap_screens, top_inset});
 
@@ -191,9 +197,14 @@ int main(int argc, char* argv[]) {
         {
             elmasds::primitives::ScopedProfile profile_gl(
                 &emulator.profiler(), elmasds::primitives::ProfileCategory::OpenGlPresent);
-            app.renderer.render(layout, pixel_w, pixel_h, emulator.top_screen(), emulator.bottom_screen());
+            if (!app.loaded_rom_path.empty()) {
+                app.renderer.render(layout, pixel_w, pixel_h, emulator.top_screen(), emulator.bottom_screen());
+            } else {
+                app.renderer.clear_backdrop(pixel_w, pixel_h);
+            }
             if (app.overlay.render(elmasds::frontend::build_hud_state(app, emulator))) {
-                app.renderer.render_overlay(app.overlay.pixels(), app.overlay.width(), app.overlay.height());
+                app.renderer.render_overlay({app.overlay.pixels(), app.overlay.width(),
+                                             app.overlay.height(), pixel_w, pixel_h});
             }
             SDL_GL_SwapWindow(app.window);
         }

@@ -204,16 +204,20 @@ void GlScreenRenderer::draw_screen_quad(const ScreenRect& rect,
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+void GlScreenRenderer::clear_backdrop(i32 window_width, i32 window_height) noexcept {
+    glViewport(0, 0, window_width, window_height);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+    glClearColor(0.039F, 0.055F, 0.078F, 1.0F);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
 void GlScreenRenderer::render(const DualScreenLayout& layout,
                               i32 window_width,
                               i32 window_height,
                               std::span<const u32> top_pixels,
                               std::span<const u32> bottom_pixels) noexcept {
-    glViewport(0, 0, window_width, window_height);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_BLEND);
-    glClearColor(0.06F, 0.06F, 0.08F, 1.0F);
-    glClear(GL_COLOR_BUFFER_BIT);
+    clear_backdrop(window_width, window_height);
     if (!initialized_) { return; }
 
     g_gl.use_program(program_);
@@ -223,35 +227,35 @@ void GlScreenRenderer::render(const DualScreenLayout& layout,
     draw_screen_quad(layout.bottom_screen, window_height, bottom_tex_, bottom_pixels);
 }
 
-void GlScreenRenderer::render_overlay(std::span<const u32> rgba_pixels,
-                                      i32 width,
-                                      i32 height) noexcept {
-    if (!initialized_ || width <= 0 || height <= 0 ||
-        rgba_pixels.size() < (static_cast<std::size_t>(width) * static_cast<std::size_t>(height))) {
+void GlScreenRenderer::render_overlay(const OverlayBlit& blit) noexcept {
+    const std::size_t needed = static_cast<std::size_t>(std::max(0, blit.tex_w)) *
+                               static_cast<std::size_t>(std::max(0, blit.tex_h));
+    if (!initialized_ || blit.tex_w <= 0 || blit.tex_h <= 0 || blit.win_w <= 0 || blit.win_h <= 0 ||
+        blit.pixels.size() < needed) {
         return;
     }
 
-    if (overlay_tex_ == 0U || width != overlay_w_ || height != overlay_h_) {
+    if (overlay_tex_ == 0U || blit.tex_w != overlay_w_ || blit.tex_h != overlay_h_) {
         if (overlay_tex_ == 0U) {
-            overlay_tex_ = create_screen_texture(width, height);
+            overlay_tex_ = create_screen_texture(blit.tex_w, blit.tex_h);
         } else {
             glBindTexture(GL_TEXTURE_2D, overlay_tex_);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(width),
-                         static_cast<GLsizei>(height), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(blit.tex_w),
+                         static_cast<GLsizei>(blit.tex_h), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         }
-        overlay_w_ = width;
-        overlay_h_ = height;
+        overlay_w_ = blit.tex_w;
+        overlay_h_ = blit.tex_h;
     }
 
-    glViewport(0, 0, width, height);
+    glViewport(0, 0, blit.win_w, blit.win_h);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     g_gl.use_program(program_);
     if (u_filter_loc_ >= 0) { g_gl.uniform1i(u_filter_loc_, 4); }
     g_gl.bind_vertex_array(vao_);
     glBindTexture(GL_TEXTURE_2D, overlay_tex_);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(width),
-                    static_cast<GLsizei>(height), GL_RGBA, GL_UNSIGNED_BYTE, rgba_pixels.data());
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(blit.tex_w),
+                    static_cast<GLsizei>(blit.tex_h), GL_RGBA, GL_UNSIGNED_BYTE, blit.pixels.data());
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glDisable(GL_BLEND);
 }
