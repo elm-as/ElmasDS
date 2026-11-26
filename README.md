@@ -15,7 +15,7 @@
   - `src/gpu/`: Scanline-accurate 2D engines A & B (`engines_2d/`), 3D Geometry Engine & Software Rasterizer (`engine_3d/`), `DISPSTAT`/`VCOUNT`/`POWCNT1` timing.
   - `src/input/` & `src/audio/`: `KEYINPUT`/`KEYCNT`/`EXTKEYIN`, customizable keymap with conflict checks & file persistence, and 16-channel 32,768 Hz stereo PCM/ADPCM/PSG/Noise mixer.
   - `src/storage/`: `.nds` ROM parser with CRC-16 validation, EEPROM/Flash/SRAM save persistence, firmware/BIOS loader, and `.ess` binary save states.
-- `elmasds`: Clean SDL3 + OpenGL 3.3 Core frontend featuring a French desktop menu bar (`Fichier`, `Émulation`, `Affichage`, `Outils`, `Paramètres`), a launch welcome screen with clickable ROM picker, multi-layout dual screens (`Vertical`, `Side-by-Side`, `Hybrid`), GLSL DS LCD grid & color correction shaders, native `Ctrl+O` ROM picker, on-demand `Escape` menu, `F3` perf/3D telemetry HUD, `Tab` Fast-Forward, `Backspace` Rewind, `M` audio mute toggle, 8 Save State slots, `F12` BMP screenshots, keyboard/stylus input, and `SDL_AudioStream` output.
+- `elmasds`: Clean SDL3 + OpenGL 3.3 Core frontend featuring a French desktop menu bar (`Fichier`, `Émulation`, `Affichage`, `Outils`, `Paramètres`) with persistent `x2` / `x4` speed toggles, a launch welcome screen with clickable ROM picker, multi-layout dual screens (`Vertical`, `Side-by-Side`, `Hybrid`), GLSL DS LCD grid & color correction shaders, native `Ctrl+O` ROM picker, on-demand `Escape` menu, `F3` perf/3D telemetry HUD, `Tab` Fast-Forward, `Backspace` Rewind, `M` audio mute toggle, 8 Save State slots, `F12` BMP screenshots, keyboard/stylus input, and `SDL_AudioStream` output.
 
 ## Default Controls & Shortcuts
 
@@ -30,7 +30,7 @@
 | Open ROM (Native File Dialog) / Drag & Drop | `Ctrl + O` |
 | Pause / Resume | `Space` |
 | Mute / Unmute Host Audio | `M` |
-| Fast-Forward (`2x` / `4x`) | Hold `Tab` |
+| Speed Boost (`2x` / `4x` Hold or Menu Toggle) | Hold `Tab` / `Émulation → Vitesse x2 / x4` |
 | Instant Rewind | Hold `Backspace` |
 | Save State Slot Select (`1..8`) / Save / Load | `1`–`8`, `F5` / `F7` |
 | Cycle Shader Filter (Sharp / LCD Grid / DS Color) | `F2` |

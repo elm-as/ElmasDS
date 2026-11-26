@@ -39,6 +39,7 @@ struct HudState {
     u32 native_gap = 16U;
     ShaderFilterMode filter_mode = ShaderFilterMode::SharpNearest;
     u32 speed_mult = 2U;
+    u32 locked_speed_mult = 1U;
     u32 active_slot = 1U;
     std::size_t rewind_count = 0U;
     bool rewinding = false;

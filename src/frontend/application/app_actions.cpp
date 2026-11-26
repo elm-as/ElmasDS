@@ -67,7 +67,11 @@ void adjust_menu_option(AppState& app, i32 delta) noexcept {
     case 3: app.swap_screens = !app.swap_screens; show_toast(app, app.swap_screens ? "ECRANS INVERSES" : "ECRANS NORMAUX"); break;
     case 4: app.native_gap = static_cast<u32>(std::clamp(static_cast<i32>(app.native_gap) + delta * 8, 0, 64)); break;
     case 5: cycle_filter(app, delta); break;
-    case 6: app.speed_mult = (app.speed_mult == 2U) ? 4U : 2U; break;
+    case 6:
+        app.locked_speed_mult = (delta >= 0)
+            ? ((app.locked_speed_mult == 1U) ? 2U : (app.locked_speed_mult == 2U ? 4U : 1U))
+            : ((app.locked_speed_mult == 1U) ? 4U : (app.locked_speed_mult == 4U ? 2U : 1U));
+        break;
     case 7: app.active_slot = static_cast<u32>((static_cast<i32>(app.active_slot) - 1 + delta + 8) % 8 + 1); break;
     case 8: app.perf_hud_open = !app.perf_hud_open; break;
     default: break;
@@ -262,6 +266,7 @@ HudState build_hud_state(const AppState& app, const core::Emulator& emu) {
         app.native_gap,
         app.renderer.filter_mode(),
         app.speed_mult,
+        app.locked_speed_mult,
         app.active_slot,
         app.rewind_buffer.size(),
         app.rewinding,

@@ -74,8 +74,9 @@ void format_dropdown_value(MenuAction action, const HudState& state, std::span<c
     case MenuAction::CycleSlot: std::snprintf(out.data(), out.size(), "SLOT %u", state.active_slot); break;
     case MenuAction::Quit: std::snprintf(out.data(), out.size(), "ALT+F4"); break;
     case MenuAction::TogglePause: std::snprintf(out.data(), out.size(), state.paused ? "EN PAUSE" : "ESPACE"); break;
+    case MenuAction::ToggleSpeed2x: std::snprintf(out.data(), out.size(), state.locked_speed_mult == 2U ? "ACTIF (2X)" : "OFF"); break;
+    case MenuAction::ToggleSpeed4x: std::snprintf(out.data(), out.size(), state.locked_speed_mult == 4U ? "ACTIF (4X)" : "OFF"); break;
     case MenuAction::ResetConsole: std::snprintf(out.data(), out.size(), "CTRL+R"); break;
-    case MenuAction::ToggleFastForward: std::snprintf(out.data(), out.size(), state.fast_forwarding ? "ON" : "TAB"); break;
     case MenuAction::ToggleRewind: std::snprintf(out.data(), out.size(), state.rewind_enabled ? "ON (F9)" : "OFF (F9)"); break;
     case MenuAction::ToggleMute: std::snprintf(out.data(), out.size(), state.audio_muted ? "MUET (M)" : "ACTIF (M)"); break;
     case MenuAction::CycleLayout: std::snprintf(out.data(), out.size(), "%s", layout_name(state.layout_mode)); break;
@@ -126,13 +127,15 @@ void HudOverlay::draw_text(std::string_view text, UiRect anchor, u32 color) noex
 
 void HudOverlay::draw_perf_strip(const HudState& state) noexcept {
     char line[96]{};
-    const int mult = state.rewinding ? -1 : (state.fast_forwarding ? static_cast<int>(state.speed_mult) : 1);
+    const u32 eff_speed =
+        state.fast_forwarding ? std::max(state.speed_mult, state.locked_speed_mult) : state.locked_speed_mult;
+    const int mult = state.rewinding ? -1 : static_cast<int>(eff_speed);
     std::snprintf(line, sizeof(line), "FPS %5.1f | %4.1fMS | 3D %4zu | %dX | RW %2zu | S%u",
                   state.fps, state.frame_ms, state.polys_3d, mult, state.rewind_count, state.active_slot);
     const i32 top_y = state.fullscreen ? 8 : (kMenuBarHeight + 6);
     fill_rect({8, top_y, 356, 15}, kColStripBg);
     stroke_rect({8, top_y, 356, 15}, kColBorder);
-    draw_text(line, {14, top_y + 4, 0, 0}, state.fast_forwarding ? kColAmber : kColText);
+    draw_text(line, {14, top_y + 4, 0, 0}, (eff_speed > 1U) ? kColAmber : kColText);
 }
 
 void HudOverlay::draw_toast(std::string_view text) noexcept {
@@ -163,7 +166,7 @@ void HudOverlay::draw_menu(const HudState& state) noexcept {
     char val_ff[24]{};
     char val_slot[24]{};
     std::snprintf(val_gap, sizeof(val_gap), "%u PX", state.native_gap);
-    std::snprintf(val_ff, sizeof(val_ff), "%uX", state.speed_mult);
+    std::snprintf(val_ff, sizeof(val_ff), "%uX", state.locked_speed_mult);
     std::snprintf(val_slot, sizeof(val_slot), "SLOT %u", state.active_slot);
 
     struct MenuRow { const char* label; const char* value; };
@@ -174,7 +177,7 @@ void HudOverlay::draw_menu(const HudState& state) noexcept {
         {"INVERSER ECRANS", state.swap_screens ? "OUI" : "NON"},
         {"ESPACEMENT", val_gap},
         {"FILTRE VISUEL", filter_name(state.filter_mode)},
-        {"VITESSE FF (TAB)", val_ff},
+        {"VITESSE JEU", val_ff},
         {"SLOT SAVE STATE", val_slot},
         {"OVERLAY PERF/3D", state.perf_hud_open ? "ON" : "OFF"},
         {"CAPTURE ECRAN BMP", "F12"},
@@ -215,13 +218,20 @@ void HudOverlay::draw_top_menu_bar(const HudState& state) noexcept {
         draw_text(top_menu_label(i), {tab.x + 6, 5, 0, 0}, (active || hovered) ? kColAmber : kColText);
     }
     if (state.audio_muted) {
-        draw_text("[MUET]", {326, 5, 0, 0}, kColAmber);
+        draw_text("[MUET]", {324, 5, 0, 0}, kColAmber);
     } else if (state.paused && state.rom_loaded) {
         draw_text("[PAUSE]", {324, 5, 0, 0}, kColAmber);
     }
+    const u32 eff_speed =
+        state.fast_forwarding ? std::max(state.speed_mult, state.locked_speed_mult) : state.locked_speed_mult;
+    if (eff_speed > 1U) {
+        char speed_badge[8]{};
+        std::snprintf(speed_badge, sizeof(speed_badge), "[%uX]", eff_speed);
+        draw_text(speed_badge, {368, 5, 0, 0}, kColAmber);
+    }
     const std::string_view title = state.rom_title.empty() ? "AUCUNE ROM"
-                                                           : std::string_view(state.rom_title).substr(0U, 20U);
-    const i32 title_x = std::max(380, kWidth - 8 - static_cast<i32>(title.size()) * 6);
+                                                           : std::string_view(state.rom_title).substr(0U, 18U);
+    const i32 title_x = std::max(396, kWidth - 8 - static_cast<i32>(title.size()) * 6);
     draw_text(title, {title_x, 5, 0, 0}, kColMuted);
 }
 
@@ -259,7 +269,7 @@ void HudOverlay::draw_welcome_screen(const HudState& state) noexcept {
     fill_rect({kCard.x, kCard.y, kCard.w, 3}, kColAmber);
 
     draw_text("ELMASDS // NINTENDO DS", {kCard.x + 18, kCard.y + 13, 0, 0}, kColText);
-    draw_text("V0.2.0", {kCard.x + kCard.w - 54, kCard.y + 13, 0, 0}, kColAmber);
+    draw_text("V1.0.0", {kCard.x + kCard.w - 54, kCard.y + 13, 0, 0}, kColAmber);
     draw_text("OUVREZ UNE ROM .NDS POUR DEMARRER", {154, kCard.y + 46, 0, 0}, kColMuted);
 
     const UiRect btn = to_ui(kWelcomeOpenButton);

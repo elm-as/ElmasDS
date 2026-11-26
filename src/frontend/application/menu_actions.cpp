@@ -94,8 +94,15 @@ void execute_menu_action(AppState& app, core::Emulator& emu, MenuAction action) 
         break;
     case MenuAction::Quit: app.running = false; break;
     case MenuAction::TogglePause: handle_shortcut(app, emu, input::EmulatorShortcut::TogglePause); break;
+    case MenuAction::ToggleSpeed2x:
+        app.locked_speed_mult = (app.locked_speed_mult == 2U) ? 1U : 2U;
+        show_toast(app, app.locked_speed_mult == 2U ? "VITESSE X2 ACTIVE" : "VITESSE NORMALE 1X");
+        break;
+    case MenuAction::ToggleSpeed4x:
+        app.locked_speed_mult = (app.locked_speed_mult == 4U) ? 1U : 4U;
+        show_toast(app, app.locked_speed_mult == 4U ? "VITESSE X4 ACTIVE" : "VITESSE NORMALE 1X");
+        break;
     case MenuAction::ResetConsole: handle_shortcut(app, emu, input::EmulatorShortcut::ResetConsole); break;
-    case MenuAction::ToggleFastForward: app.fast_forwarding = !app.fast_forwarding; break;
     case MenuAction::ToggleRewind: toggle_rewind_mode(app); break;
     case MenuAction::CloseOverlays:
         app.open_dropdown = -1;

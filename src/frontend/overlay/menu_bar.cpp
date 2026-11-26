@@ -28,10 +28,11 @@ constexpr std::array<DropdownItemSpec, 5U> kFileItems = {{
     {"QUITTER", MenuAction::Quit},
 }};
 
-constexpr std::array<DropdownItemSpec, 5U> kEmulationItems = {{
+constexpr std::array<DropdownItemSpec, 6U> kEmulationItems = {{
     {"PAUSE / REPRENDRE", MenuAction::TogglePause},
+    {"VITESSE X2", MenuAction::ToggleSpeed2x},
+    {"VITESSE X4", MenuAction::ToggleSpeed4x},
     {"REINITIALISER", MenuAction::ResetConsole},
-    {"AVANCE RAPIDE", MenuAction::ToggleFastForward},
     {"REMBOBINAGE", MenuAction::ToggleRewind},
     {"MUET AUDIO", MenuAction::ToggleMute},
 }};
@@ -52,7 +53,7 @@ constexpr std::array<DropdownItemSpec, 4U> kToolsItems = {{
 }};
 
 constexpr std::array<DropdownItemSpec, 4U> kSettingsItems = {{
-    {"VITESSE RAPIDE", MenuAction::ToggleSpeedMult},
+    {"VITESSE TAB", MenuAction::ToggleSpeedMult},
     {"MUET AUDIO", MenuAction::ToggleMute},
     {"REMBOBINAGE", MenuAction::ToggleRewind},
     {"AIDE CONTROLES", MenuAction::ToggleControlsHelp},

@@ -81,7 +81,8 @@ void step_emulator_frame(elmasds::frontend::AppState& app, elmasds::core::Emulat
         return;
     }
 
-    const elmasds::u32 steps = app.fast_forwarding ? app.speed_mult : 1U;
+    const elmasds::u32 steps =
+        app.fast_forwarding ? std::max(app.speed_mult, app.locked_speed_mult) : app.locked_speed_mult;
     for (elmasds::u32 s = 0U; s < steps; ++s) {
         emu.run_frame();
         if (app.rewind_enabled && !app.loaded_rom_path.empty() && (++app.rewind_tick % 45U) == 0U) {
@@ -134,7 +135,7 @@ int main(int argc, char* argv[]) {
     bool profile_audit = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
-        if (arg == "--version") { std::cout << "ElmasDS 0.2.0\n"; return 0; }
+        if (arg == "--version") { std::cout << "ElmasDS 1.0.0\n"; return 0; }
         if (arg == "--headless-check") {
             elmasds::core::Emulator emu;
             emu.step_ticks(1024);

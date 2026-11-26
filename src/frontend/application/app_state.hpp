@@ -54,6 +54,7 @@ struct AppState {
     bool swap_screens = false;
     u32 native_gap = 16U;
     u32 speed_mult = 2U;
+    u32 locked_speed_mult = 1U;
     u32 active_slot = 1U;
     u32 screenshot_counter = 0U;
     u32 rewind_tick = 0U;

@@ -128,6 +128,14 @@ TEST(RewindAndScreenshotTest, RewindRingBufferAndDualScreenBmpWriterWork) {
     EXPECT_TRUE(item_hit.consumed);
     EXPECT_EQ(item_hit.action, MenuAction::OpenRom);
 
+    const auto x2_hit = hit_test_menu_bar(80, kMenuBarHeight + 4 + kDropdownItemHeight, 1);
+    EXPECT_TRUE(x2_hit.consumed);
+    EXPECT_EQ(x2_hit.action, MenuAction::ToggleSpeed2x);
+
+    const auto x4_hit = hit_test_menu_bar(80, kMenuBarHeight + 4 + (2 * kDropdownItemHeight), 1);
+    EXPECT_TRUE(x4_hit.consumed);
+    EXPECT_EQ(x4_hit.action, MenuAction::ToggleSpeed4x);
+
     const auto outside_hit = hit_test_menu_bar(480, 300, 0);
     EXPECT_TRUE(outside_hit.consumed);
     EXPECT_EQ(outside_hit.action, MenuAction::CloseOverlays);
