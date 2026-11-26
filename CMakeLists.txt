@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     ElmasDS
-    VERSION 1.0.1
+    VERSION 1.0.2
     DESCRIPTION "Nintendo DS Emulator in strict C++20"
     LANGUAGES CXX
 )

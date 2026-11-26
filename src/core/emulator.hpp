@@ -15,6 +15,7 @@
 #include "hardware/rtc/rtc_controller.hpp"
 #include "hardware/spi/spi_controller.hpp"
 #include "hardware/timers/timer_controller.hpp"
+#include "hardware/wifi/wifi_controller.hpp"
 #include "input/input_mapping.hpp"
 #include "input/keypad_mmio.hpp"
 #include "memory/memory_bus/arm7_memory_bus.hpp"
@@ -196,6 +197,7 @@ private:
     hardware::math::MathCoprocessor arm9_math_;
     hardware::spi::SpiController arm7_spi_;
     hardware::rtc::RtcController arm7_rtc_;
+    hardware::wifi::WifiController arm7_wifi_;
     hardware::cartridge::CartridgeController cartridge_;
     gpu::Gpu gpu_;
     input::KeypadController keypad_;

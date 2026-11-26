@@ -42,6 +42,7 @@ add_library(
         hardware/rtc/rtc_controller.cpp
         hardware/math/math_coprocessor.cpp
         hardware/cartridge/cartridge_controller.cpp
+        hardware/wifi/wifi_controller.cpp
         storage/rom_loader/nds_rom.cpp
         storage/save_manager/save_memory.cpp
         storage/firmware/system_image_loader.cpp

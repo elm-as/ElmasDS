@@ -89,7 +89,7 @@ void Emulator::register_mmio_devices() {
     }};
     for (const auto& entry : reg9) { m9.register_device(entry); }
 
-    const std::array<memory::MmioRegistration, 11U> reg7 = {{
+    const std::array<memory::MmioRegistration, 12U> reg7 = {{
         {hardware::dma::kDmaBaseAddress, hardware::dma::kDmaChannelEndAddress, &arm7_dma_},
         {hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress, &arm7_timers_},
         {hardware::rtc::kRtcMmioStart, hardware::rtc::kRtcMmioEnd, &arm7_rtc_},
@@ -97,6 +97,7 @@ void Emulator::register_mmio_devices() {
         {hardware::cartridge::kRegRomData, hardware::cartridge::kRegRomDataEnd, &cartridge_.arm7_mmio()},
         {hardware::cartridge::kRegExMemCnt, hardware::cartridge::kRegExMemCntEnd, &cartridge_.arm7_mmio()},
         {hardware::spi::kSpiMmioStart, hardware::spi::kSpiMmioEnd, &arm7_spi_},
+        {hardware::wifi::kWifiMmioStart, hardware::wifi::kWifiMmioEnd, &arm7_wifi_},
         {hardware::interrupts::InterruptController::kMmioStart, hardware::interrupts::InterruptController::kMmioEnd, &arm7_irq_},
         {hardware::interrupts::SystemControlMmio::kMmioStart, hardware::interrupts::SystemControlMmio::kMmioEnd, &arm7_sys_ctrl_},
         {input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm7_mmio()},
@@ -144,7 +145,7 @@ void Emulator::reset() noexcept {
     arm9_timers_.reset(); arm7_timers_.reset();
     arm9_dma_.reset(); arm7_dma_.reset();
     ipc_.reset(); arm9_math_.reset();
-    arm7_spi_.reset(); arm7_rtc_.reset();
+    arm7_spi_.reset(); arm7_rtc_.reset(); arm7_wifi_.reset();
     cartridge_.reset(); gpu_.reset();
     keypad_.reset(); audio_.reset();
     arm9_hle_bios_.reset(); arm7_hle_bios_.reset();

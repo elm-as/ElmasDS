@@ -1,3 +1,4 @@
+#include "hardware/wifi/wifi_controller.hpp"
 #include "storage/firmware/system_image_loader.hpp"
 #include "storage/rom_loader/nds_rom.hpp"
 #include "storage/save_manager/save_memory.hpp"
@@ -172,6 +173,37 @@ TEST(SystemImageLoaderTest, ValidatesBiosSizesAndCreatesDefaultFirmware) {
 
     const auto default_fw = firmware::create_default_firmware_image();
     EXPECT_EQ(default_fw.size(), hardware::spi::kDefaultFirmwareSize);
+}
+
+TEST(FirmwareAndWifiTest, DefaultFirmwareHasValidWifiCrcAndWifiMmioResponds) {
+    const auto fw = firmware::create_default_firmware_image();
+    ASSERT_GE(fw.size(), hardware::spi::kDefaultFirmwareSize);
+    const u16 len = static_cast<u16>(fw[0x02CU]) | (static_cast<u16>(fw[0x02DU]) << 8U);
+    EXPECT_EQ(len, 0x0138U);
+    EXPECT_EQ(fw[0x036U], 0x00U);
+    EXPECT_EQ(fw[0x037U], 0x09U);
+    EXPECT_EQ(fw[0x038U], 0xBFU);
+
+    u32 crc = 0U;
+    for (std::size_t i = 0x02CU; i < 0x02CU + 0x0138U; ++i) {
+        crc ^= fw[i];
+        for (int b = 0; b < 8; ++b) {
+            const bool lsb = (crc & 1U) != 0U;
+            crc >>= 1U;
+            if (lsb) { crc ^= 0xA001U; }
+        }
+    }
+    const u16 stored_crc = static_cast<u16>(fw[0x02AU]) | (static_cast<u16>(fw[0x02BU]) << 8U);
+    EXPECT_EQ(stored_crc, static_cast<u16>(crc & 0xFFFFU));
+
+    hardware::wifi::WifiController wifi;
+    EXPECT_EQ(wifi.read16(0x04808000U), 0x1440U);
+    wifi.write16(0x0480803CU, 0x0001U);
+    EXPECT_EQ(wifi.read16(0x0480803CU) & 0x0200U, 0U);
+    wifi.write16(0x04808158U, 0x6000U);
+    EXPECT_EQ(wifi.read16(0x0480815CU), 0x006DU);
+    wifi.write16(0x04804000U, 0xCAFEU);
+    EXPECT_EQ(wifi.read16(0x04804000U), 0xCAFEU);
 }
 
 }  // namespace

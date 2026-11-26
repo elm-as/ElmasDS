@@ -289,7 +289,7 @@ void HudOverlay::draw_welcome_screen(const HudState& state) noexcept {
     draw_text("EMULATEUR NINTENDO DS", {card.x + 44, card.y + 26, 0, 0}, kColMuted);
     fill_rect({card.x + card.w - 64, card.y + 14, 48, 17}, kColSelected);
     stroke_rect({card.x + card.w - 64, card.y + 14, 48, 17}, kColAmber);
-    draw_text_centered("V1.0.1", {card.x + card.w - 64, card.y + 14, 48, 17}, kColAmber);
+    draw_text_centered("V1.0.2", {card.x + card.w - 64, card.y + 14, 48, 17}, kColAmber);
 
     draw_text_centered("SELECTIONNEZ UNE CARTOUCHE .NDS", {card.x, card.y + 58, card.w, 14}, kColMuted);
     const UiRect btn = to_ui(welcome_open_button_rect(width_, height_));

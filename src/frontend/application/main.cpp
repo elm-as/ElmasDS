@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
     bool profile_audit = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
-        if (arg == "--version") { std::cout << "ElmasDS 1.0.1\n"; return 0; }
+        if (arg == "--version") { std::cout << "ElmasDS 1.0.2\n"; return 0; }
         if (arg == "--headless-check") {
             elmasds::core::Emulator emu;
             emu.step_ticks(1024);
