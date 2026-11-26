@@ -18,6 +18,7 @@ add_executable(
     hardware/test_interrupt_controller.cpp
     hardware/test_timers.cpp
     hardware/test_dma_controller.cpp
+    hardware/test_dma_triggers.cpp
     hardware/test_ipc_controller.cpp
     hardware/test_spi_and_rtc.cpp
     hardware/test_cartridge.cpp

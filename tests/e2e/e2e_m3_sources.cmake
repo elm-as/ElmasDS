@@ -1,0 +1,14 @@
+set(ELMASDS_E2E_M3_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/e2e_m3_helpers.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/e2e_m3_guest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier1_nds_loader_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier2_nds_loader_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier1_cartridge_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier1_cartridge_rom_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier2_cartridge_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier2_cartridge_rom_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier1_save_memory_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier2_save_memory_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier1_boot_e2e.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tier2_boot_e2e.cpp"
+)

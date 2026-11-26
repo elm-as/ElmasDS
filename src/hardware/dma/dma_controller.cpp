@@ -252,7 +252,7 @@ void DmaController::write_control(std::size_t index, u16 raw_value) {
     }
     latch_channel(index);
     const DmaTrigger timing = ch.start_timing(cpu_, index);
-    if (timing == DmaTrigger::Immediate || timing == DmaTrigger::GeometryFifo) {
+    if (timing == DmaTrigger::Immediate) {
         execute_transfer(index);
     }
 }
@@ -291,9 +291,10 @@ void DmaController::transfer_units(std::size_t index) {
     const u32 src_mask = sad_mask(cpu_, index);
     const u32 dst_mask = dad_mask(cpu_, index);
 
+    const u32 count = ch.internal_count;
     u32 src = ch.internal_sad & align_mask;
     u32 dst = ch.internal_dad & align_mask;
-    for (u32 unit = 0U; unit < ch.internal_count; ++unit) {
+    for (u32 unit = 0U; unit < count; ++unit) {
         if (wide) {
             bus_.write32(dst, bus_.read32(src));
         } else {
@@ -309,7 +310,7 @@ void DmaController::transfer_units(std::size_t index) {
 void DmaController::finish_transfer(std::size_t index, bool raise_irq) noexcept {
     DmaChannel& ch = channels_[index];
     const DmaTrigger timing = ch.start_timing(cpu_, index);
-    if (ch.is_repeat() && timing != DmaTrigger::Immediate && timing != DmaTrigger::GeometryFifo) {
+    if (ch.is_repeat() && timing != DmaTrigger::Immediate) {
         ch.internal_count = ch.compute_word_count(cpu_, index);
         if (ch.dest_ctrl() == 3U) {
             ch.internal_dad = ch.dad & dad_mask(cpu_, index);

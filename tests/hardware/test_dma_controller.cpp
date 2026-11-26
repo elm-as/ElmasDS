@@ -1,75 +1,14 @@
-#include "cpu/arm_architecture/bus_interface.hpp"
-#include "hardware/dma/dma_controller.hpp"
-#include "hardware/interrupts/interrupt_controller.hpp"
+#include "dma_test_rig.hpp"
+
 #include "hardware/interrupts/irq_source.hpp"
 #include "memory/memory_bus/arm7_memory_bus.hpp"
 #include "memory/memory_bus/arm9_memory_bus.hpp"
 #include "memory/memory_bus/memory_system.hpp"
 
 #include <gtest/gtest.h>
-#include <unordered_map>
-#include <vector>
 
 namespace elmasds::hardware::dma {
 namespace {
-
-class RecordingBus final : public cpu::CpuBusInterface {
-public:
-    u8 read8(Address address) override { return read_byte(address); }
-
-    u16 read16(Address address) override {
-        const Address aligned = address & ~1U;
-        const u16 lo = read_byte(aligned);
-        const u16 hi = read_byte(aligned + 1U);
-        return static_cast<u16>(lo | (hi << 8U));
-    }
-
-    u32 read32(Address address) override {
-        const Address aligned = address & ~3U;
-        const u32 lo = read16(aligned);
-        const u32 hi = read16(aligned + 2U);
-        return lo | (hi << 16U);
-    }
-
-    void write8(Address address, u8 value) override {
-        write_log.push_back(address);
-        storage[address] = value;
-    }
-
-    void write16(Address address, u16 value) override {
-        const Address aligned = address & ~1U;
-        write_log.push_back(aligned);
-        storage[aligned] = static_cast<u8>(value & 0xFFU);
-        storage[aligned + 1U] = static_cast<u8>((value >> 8U) & 0xFFU);
-    }
-
-    void write32(Address address, u32 value) override {
-        const Address aligned = address & ~3U;
-        write_log.push_back(aligned);
-        storage[aligned] = static_cast<u8>(value & 0xFFU);
-        storage[aligned + 1U] = static_cast<u8>((value >> 8U) & 0xFFU);
-        storage[aligned + 2U] = static_cast<u8>((value >> 16U) & 0xFFU);
-        storage[aligned + 3U] = static_cast<u8>((value >> 24U) & 0xFFU);
-    }
-
-    std::unordered_map<Address, u8> storage;
-    std::vector<Address> write_log;
-
-private:
-    [[nodiscard]] u8 read_byte(Address address) const {
-        const auto it = storage.find(address);
-        return (it == storage.end()) ? 0U : it->second;
-    }
-};
-
-struct DmaHarness {
-    RecordingBus bus;
-    interrupts::InterruptController irq;
-    DmaController dma;
-
-    explicit DmaHarness(interrupts::CpuKind cpu = interrupts::CpuKind::Arm9)
-        : irq(cpu), dma(cpu, bus, irq) {}
-};
 
 TEST(DmaControllerTest, ResetAndOutOfRangeAccessesAreSafe) {
     DmaHarness arm9(interrupts::CpuKind::Arm9);
@@ -117,7 +56,7 @@ TEST(DmaControllerTest, RegisterMasksAndReadbackMatchArm9AndArm7Specs) {
     // ARM7 DMA0: 27-bit SAD/DAD, 14-bit CNT_L, CNT_H masked by 0xF7E0.
     arm7.dma.write32(0x040000B0U, 0xFFFFFFFFU);
     arm7.dma.write32(0x040000B4U, 0xFFFFFFFFU);
-    arm7.dma.write32(0x040000B8U, 0x1FFFU << 16U | 0xFFFFU);
+    arm7.dma.write32(0x040000B8U, (0x1FFFU << 16U) | 0xFFFFU);
     EXPECT_EQ(arm7.dma.read32(0x040000B0U), 0x07FFFFFEU);
     EXPECT_EQ(arm7.dma.read32(0x040000B4U), 0x07FFFFFEU);
     EXPECT_EQ(arm7.dma.read16(0x040000B8U), 0x3FFFU);
@@ -246,62 +185,6 @@ TEST(DmaControllerTest, ShadowLatchesLoadOnRisingEdgeAndRepeatDestReload) {
     arm9.dma.trigger_vblank();
     EXPECT_EQ(arm9.bus.read32(0x02003000U), 0x00000033U);
     EXPECT_EQ(arm9.bus.read32(0x02003004U), 0x00000000U);
-}
-
-TEST(DmaControllerTest, TriggerTypesHBlankPauseAndPriorityOrder) {
-    DmaHarness arm9(interrupts::CpuKind::Arm9);
-    for (u32 ch = 0U; ch < 4U; ++ch) {
-        arm9.bus.write32(0x02000100U + (ch * 4U), 0xA0U + ch);
-        const Address base = 0x040000B0U + (ch * 12U);
-        arm9.dma.write32(base, 0x02000100U + (ch * 4U));
-        arm9.dma.write32(base + 4U, 0x02000200U);
-        // VBlank (1 << 27), 32-bit, Fixed dst, count=1.
-        arm9.dma.write32(base + 8U, 0x8C400001U);
-    }
-    arm9.bus.write_log.clear();
-    arm9.dma.trigger_vblank();
-    ASSERT_EQ(arm9.bus.write_log.size(), 4U);
-    EXPECT_EQ(arm9.bus.read32(0x02000200U), 0xA3U);  // DMA3 ran last (0 > 1 > 2 > 3)
-
-    // HBlank paused while VBlank active, resumes when cleared; Cartridge & GXFIFO triggers.
-    arm9.bus.write32(0x02000300U, 0x55556666U);
-    arm9.dma.write32(0x040000B0U, 0x02000300U);
-    arm9.dma.write32(0x040000B4U, 0x02000400U);
-    arm9.dma.write32(0x040000B8U, 0x94000001U);  // HBlank (2 << 27)
-    arm9.dma.set_vblank_active(true);
-    arm9.dma.trigger_hblank();
-    EXPECT_TRUE(arm9.dma.is_channel_active(0U));
-    arm9.dma.set_vblank_active(false);
-    arm9.dma.trigger_hblank();
-    EXPECT_FALSE(arm9.dma.is_channel_active(0U));
-    EXPECT_EQ(arm9.bus.read32(0x02000400U), 0x55556666U);
-
-    arm9.dma.write32(0x040000BCU, 0x02000300U);
-    arm9.dma.write32(0x040000C0U, 0x02000404U);
-    arm9.dma.write32(0x040000C4U, 0xAC000001U);  // CartridgeSlot1 (5 << 27)
-    arm9.dma.trigger_cartridge();
-    EXPECT_EQ(arm9.bus.read32(0x02000404U), 0x55556666U);
-
-    arm9.dma.write32(0x040000C8U, 0x02000300U);
-    arm9.dma.write32(0x040000CCU, 0x02000408U);
-    arm9.dma.write32(0x040000D0U, 0xBC000001U);  // GeometryFifo (7 << 27)
-    arm9.dma.trigger_gxfifo();
-    EXPECT_EQ(arm9.bus.read32(0x02000408U), 0x55556666U);
-
-    // ARM7 Wireless (ch0 timing=3) and GbaSlot (ch1 timing=3).
-    DmaHarness arm7(interrupts::CpuKind::Arm7);
-    arm7.bus.write32(0x03800000U, 0x13572468U);
-    arm7.dma.write32(0x040000B0U, 0x03800000U);
-    arm7.dma.write32(0x040000B4U, 0x03800100U);
-    arm7.dma.write32(0x040000B8U, 0xB4000001U);  // ch0 timing=3 -> Wireless
-    arm7.dma.write32(0x040000BCU, 0x03800000U);
-    arm7.dma.write32(0x040000C0U, 0x03800200U);
-    arm7.dma.write32(0x040000C4U, 0xB4000001U);  // ch1 timing=3 -> GbaSlot
-    arm7.dma.trigger(DmaTrigger::Wireless);
-    EXPECT_EQ(arm7.bus.read32(0x03800100U), 0x13572468U);
-    EXPECT_EQ(arm7.bus.read32(0x03800200U), 0x00000000U);
-    arm7.dma.trigger(DmaTrigger::GbaSlot);
-    EXPECT_EQ(arm7.bus.read32(0x03800200U), 0x13572468U);
 }
 
 TEST(DmaControllerTest, MemorySystemIntegrationWithArm9FillAndArm7Transfers) {
