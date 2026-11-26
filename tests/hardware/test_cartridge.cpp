@@ -114,5 +114,39 @@ TEST(CartridgeControllerTest, ExMemCntSwitchesSlotOwnershipBetweenArm9AndArm7) {
     EXPECT_EQ(cart.arm9_mmio().read32(kRegRomCtrl), 0U);
 }
 
+TEST(CartridgeControllerTest, RepeatDmaDrains512ByteBlockWordByWord) {
+    memory::MemorySystem memory;
+    memory::Arm9MemoryBus arm9_bus(memory);
+    InterruptController arm9_irq(CpuKind::Arm9);
+    dma::DmaController arm9_dma(CpuKind::Arm9, arm9_bus, arm9_irq);
+    CartridgeController cart(CartridgeConfig{&arm9_irq, nullptr, &arm9_dma, nullptr});
+    memory.arm9_mmio().register_device({kCartMmioStart, kCartMmioEnd, &cart.arm9_mmio()});
+    memory.arm9_mmio().register_device({kRegRomData, kRegRomDataEnd, &cart.arm9_mmio()});
+    memory.arm9_mmio().register_device({kRegExMemCnt, kRegExMemCntEnd, &cart.arm9_mmio()});
+
+    cart.insert_rom(make_test_rom());
+    cart.arm9_mmio().write16(kRegAuxSpiCnt, static_cast<u16>((1U << 15U) | (1U << 14U)));
+
+    // Configure ARM9 DMA0: Cartridge timing (5<<27), 32-bit (bit 26), Repeat (bit 25),
+    // Fixed src (2<<23), Inc dst (0<<21), Count = 1 word per trigger.
+    constexpr Address kDst = 0x02020000U;
+    arm9_dma.write32(0x040000B0U, kRegRomData);
+    arm9_dma.write32(0x040000B4U, kDst);
+    arm9_dma.write32(0x040000B8U,
+                     (1U << 31U) | (5U << 27U) | (1U << 26U) | (1U << 25U) | (2U << 23U) | 1U);
+
+    cart.arm9_mmio().write8(kRegRomCmdStart + 0U, 0xB7U);
+    cart.arm9_mmio().write8(kRegRomCmdStart + 1U, 0x00U);
+    cart.arm9_mmio().write8(kRegRomCmdStart + 2U, 0x00U);
+    cart.arm9_mmio().write8(kRegRomCmdStart + 3U, 0x82U);
+    cart.arm9_mmio().write8(kRegRomCmdStart + 4U, 0x00U);
+    cart.arm9_mmio().write32(kRegRomCtrl, (1U << 31U) | (1U << 24U));  // 512 bytes = 128 words
+
+    EXPECT_EQ(arm9_bus.read32(kDst + 0U), 0x11223344U);
+    EXPECT_EQ(arm9_bus.read32(kDst + 4U), 0x55667788U);
+    EXPECT_EQ(cart.arm9_mmio().read32(kRegRomCtrl) & (1U << 31U), 0U);
+    EXPECT_NE(arm9_irq.if_flags() & interrupts::irq_bit_mask(IrqSource::CartridgeTransfer), 0U);
+}
+
 }  // namespace
 }  // namespace elmasds::hardware::cartridge

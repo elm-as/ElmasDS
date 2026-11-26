@@ -20,6 +20,7 @@ public:
     explicit BiosMemory(std::size_t size_bytes, bool enforce_pc_protection = false);
 
     Status load(std::span<const u8> image) noexcept;
+    void install_hle_stub(std::span<const u8> image) noexcept;
     void clear() noexcept;
 
     [[nodiscard]] u8 read8(Address offset, Address current_pc = 0U) const noexcept;

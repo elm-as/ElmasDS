@@ -181,8 +181,9 @@ ArmStepResult execute_thumb_branch_or_swi(ArmCoreContext& context,
     const u32 top5 = bits::extract_bits(opcode, 11U, 5U);
     if ((opcode & 0xFF00U) == 0xDF00U) {
         const u8 swi_number = static_cast<u8>(opcode & 0xFFU);
-        if (context.swi_handler.try_handle(context, swi_number)) {
-            return ArmStepResult{3U, false};
+        const SwiOutcome outcome = context.swi_handler.try_handle(context, swi_number);
+        if (outcome.handled) {
+            return ArmStepResult{3U, outcome.repeat_instruction};
         }
         raise_exception(context, CpuException::SoftwareInterrupt, instruction_pc);
         return ArmStepResult{3U, true};

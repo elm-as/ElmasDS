@@ -10,7 +10,6 @@
 #include <utility>
 
 namespace elmasds::core {
-
 namespace {
 
 constexpr TickCount kMaxCpuSliceTicks = 32ULL;
@@ -41,12 +40,8 @@ void configure_direct_boot_stacks(cpu::RegisterBank& regs, Address entry_pc,
 }  // namespace
 
 Emulator::Emulator(EmulatorConfig config)
-    : config_(std::move(config)),
-      diagnostics_(config_.log_level),
-      arm9_bus_(memory_),
-      arm7_bus_(memory_),
-      arm9_(arm9_bus_),
-      arm7_(arm7_bus_),
+    : config_(std::move(config)), diagnostics_(config_.log_level),
+      arm9_bus_(memory_), arm7_bus_(memory_), arm9_(arm9_bus_), arm7_(arm7_bus_),
       arm9_irq_(hardware::interrupts::CpuKind::Arm9,
                 hardware::interrupts::make_interrupt_target(&arm9_)),
       arm7_irq_(hardware::interrupts::CpuKind::Arm7,
@@ -58,28 +53,24 @@ Emulator::Emulator(EmulatorConfig config)
       arm7_timers_(hardware::interrupts::CpuKind::Arm7, scheduler_, arm7_irq_),
       arm9_dma_(hardware::interrupts::CpuKind::Arm9, arm9_bus_, arm9_irq_),
       arm7_dma_(hardware::interrupts::CpuKind::Arm7, arm7_bus_, arm7_irq_),
-      ipc_(arm9_irq_, arm7_irq_),
-      arm7_spi_(&arm7_irq_),
+      ipc_(arm9_irq_, arm7_irq_), arm7_spi_(&arm7_irq_),
       cartridge_(hardware::cartridge::CartridgeConfig{&arm9_irq_, &arm7_irq_, &arm9_dma_,
                                                       &arm7_dma_}),
       gpu_(gpu::GpuDependencies{scheduler_, memory_, arm9_irq_, arm7_irq_, arm9_dma_, arm7_dma_}),
-      keypad_(arm9_irq_, arm7_irq_),
-      audio_(scheduler_, arm7_bus_),
-      arm9_hle_bios_(hardware::interrupts::CpuKind::Arm9, arm9_irq_),
+      keypad_(arm9_irq_, arm7_irq_), audio_(scheduler_, arm7_bus_),
+      arm9_hle_bios_(hardware::interrupts::CpuKind::Arm9, arm9_irq_, &arm9_.cp15()),
       arm7_hle_bios_(hardware::interrupts::CpuKind::Arm7, arm7_irq_) {
     arm9_.context().swi_handler = arm9_hle_bios_.make_swi_handler();
     arm7_.context().swi_handler = arm7_hle_bios_.make_swi_handler();
     register_mmio_devices();
     load_configured_system_images();
-    diagnostics_.info("Emulator", "Core initialized with ARM9/ARM7 and Phase 3-6 subsystems.");
+    diagnostics_.info("Emulator", "Core initialized with ARM9/ARM7 and Phase 3-7 subsystems.");
 }
 
 void Emulator::register_mmio_devices() {
     auto& mmio9 = memory_.arm9_mmio();
     auto& mmio7 = memory_.arm7_mmio();
-
     gpu_.register_mmio(mmio9, mmio7);
-
     mmio9.register_device({hardware::dma::kDmaBaseAddress, hardware::dma::kDmaFillEndAddress,
                            &arm9_dma_});
     mmio9.register_device({hardware::timers::kTimerBaseAddress, hardware::timers::kTimerEndAddress,
@@ -94,6 +85,8 @@ void Emulator::register_mmio_devices() {
                            hardware::interrupts::InterruptController::kMmioEnd, &arm9_irq_});
     mmio9.register_device({hardware::interrupts::SystemControlMmio::kMmioStart,
                            hardware::interrupts::SystemControlMmio::kMmioEnd, &arm9_sys_ctrl_});
+    mmio9.register_device({hardware::math::kMathMmioStart, hardware::math::kMathMmioEnd,
+                           &arm9_math_});
     mmio9.register_device({input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm9_mmio()});
 
     mmio7.register_device({hardware::dma::kDmaBaseAddress, hardware::dma::kDmaChannelEndAddress,
@@ -114,7 +107,6 @@ void Emulator::register_mmio_devices() {
                            hardware::interrupts::SystemControlMmio::kMmioEnd, &arm7_sys_ctrl_});
     mmio7.register_device({input::kKeypadMmioStart, input::kKeypadMmioEnd, &keypad_.arm7_mmio()});
     mmio7.register_device({audio::kAudioMmioStart, audio::kAudioMmioEnd, &audio_});
-
     ipc_.register_mmio(mmio9, mmio7);
 }
 
@@ -142,10 +134,9 @@ void Emulator::load_configured_system_images() {
         {"Firmware", config_.firmware_path, 0U, &Emulator::load_firmware},
     }};
     for (const auto& request : requests) {
-        if (request.path.empty()) {
-            continue;
+        if (!request.path.empty()) {
+            report_load_status(request.name, load_system_image_file(request));
         }
-        report_load_status(request.name, load_system_image_file(request));
     }
 }
 
@@ -161,12 +152,15 @@ void Emulator::reset() noexcept {
     arm9_dma_.reset();
     arm7_dma_.reset();
     ipc_.reset();
+    arm9_math_.reset();
     arm7_spi_.reset();
     arm7_rtc_.reset();
     cartridge_.reset();
     gpu_.reset();
     keypad_.reset();
     audio_.reset();
+    arm9_hle_bios_.reset();
+    arm7_hle_bios_.reset();
     arm9_.reset(0xFFFF0000U, true);
     arm7_.reset(0x00000000U);
     arm9_.context().swi_handler = arm9_hle_bios_.make_swi_handler();
@@ -222,12 +216,40 @@ Status Emulator::load_firmware(std::span<const u8> firmware) {
 }
 
 Status Emulator::attach_save(const std::filesystem::path& save_path, u32 type_hint) {
-    const auto hint = static_cast<storage::save_manager::SaveType>(type_hint);
-    return cartridge_.save_memory().attach_file(save_path, hint);
+    return cartridge_.save_memory().attach_file(
+        save_path, static_cast<storage::save_manager::SaveType>(type_hint));
 }
 
 Status Emulator::flush_save() {
     return cartridge_.save_memory().flush_if_dirty();
+}
+
+void Emulator::populate_post_bios_memory(const storage::rom_loader::NdsRom& rom) {
+    const auto& hdr = rom.header();
+    const u32 chip_id = rom.chip_id();
+    const std::size_t header_copy = std::min<std::size_t>(kBootHeaderCopySize, rom.bytes().size());
+    write_bytes_to_bus(arm9_bus_, kBootHeaderRamAddress, rom.bytes().subspan(0U, header_copy));
+
+    arm9_bus_.write32(0x027FF800U, chip_id);
+    arm9_bus_.write32(0x027FF804U, chip_id);
+    arm9_bus_.write16(0x027FF808U, hdr.header_crc);
+    arm9_bus_.write16(0x027FF80AU, hdr.secure_area_crc);
+    arm9_bus_.write16(0x027FF850U, 0x5835U);
+    arm9_bus_.write16(0x027FF868U, 0x7FC0U);
+    arm9_bus_.write16(0x027FF874U, hdr.header_crc);
+    arm9_bus_.write16(0x027FF876U, hdr.secure_area_crc);
+
+    arm9_bus_.write32(0x027FFC00U, chip_id);
+    arm9_bus_.write32(0x027FFC04U, chip_id);
+    arm9_bus_.write16(0x027FFC08U, hdr.header_crc);
+    arm9_bus_.write16(0x027FFC0AU, hdr.secure_area_crc);
+    arm9_bus_.write16(0x027FFC10U, 0x5835U);
+    arm9_bus_.write16(0x027FFC40U, 0x0001U);
+
+    const auto& fw = arm7_spi_.firmware().data();
+    if (fw.size() >= 0x3FE70U) {
+        write_bytes_to_bus(arm9_bus_, 0x027FFC80U, std::span<const u8>(fw.data() + 0x3FE00U, 0x70U));
+    }
 }
 
 Status Emulator::direct_boot() {
@@ -241,21 +263,25 @@ Status Emulator::direct_boot() {
     if (!firmware_loaded_) {
         arm7_spi_.firmware().load_image(storage::firmware::create_default_firmware_image());
     }
+    if (!memory_.bios9().is_loaded()) {
+        memory_.bios9().install_hle_stub(cpu::create_hle_bios9_stub());
+    }
+    if (!memory_.bios7().is_loaded()) {
+        memory_.bios7().install_hle_stub(cpu::create_hle_bios7_stub());
+    }
 
-    // Standard post-BIOS Shared WRAM mapping (all 32 KiB assigned to ARM7).
     memory_.shared_wram().set_wram_cnt(0x03U);
-
     const auto& hdr = rom->header();
     write_bytes_to_bus(arm9_bus_, hdr.arm9_ram_address, rom->arm9_binary());
     write_bytes_to_bus(arm7_bus_, hdr.arm7_ram_address, rom->arm7_binary());
-
-    const std::size_t header_copy = std::min<std::size_t>(kBootHeaderCopySize, rom->bytes().size());
-    write_bytes_to_bus(arm9_bus_, kBootHeaderRamAddress, rom->bytes().subspan(0U, header_copy));
+    populate_post_bios_memory(*rom);
 
     arm9_sys_ctrl_.write8(hardware::interrupts::SystemControlMmio::kRegPostFlg, 1U);
     arm7_sys_ctrl_.write8(hardware::interrupts::SystemControlMmio::kRegPostFlg, 1U);
 
     arm9_.reset(hdr.arm9_entry_address, true);
+    arm9_.cp15().restore_registers(0x00052078U, 0x0300000AU, 0x00000020U);
+    arm9_.context().high_vectors = true;
     configure_direct_boot_stacks(arm9_.registers(), hdr.arm9_entry_address,
                                  {0x03002F7CU, 0x03003F80U, 0x03003FC0U});
 
@@ -331,12 +357,7 @@ void Emulator::set_touch_pixel(u16 pixel_x, u16 pixel_y, bool pressed) noexcept 
     set_touch_state(adc.raw_x, adc.raw_y, pressed);
 }
 
-void Emulator::run_frame() {
-    step_ticks(gpu::kTicksPerFrame);
-}
-
-void Emulator::set_rtc_datetime(const hardware::rtc::RtcDateTime& datetime) noexcept {
-    arm7_rtc_.set_date_time(datetime);
-}
+void Emulator::run_frame() { step_ticks(gpu::kTicksPerFrame); }
+void Emulator::set_rtc_datetime(const hardware::rtc::RtcDateTime& dt) noexcept { arm7_rtc_.set_date_time(dt); }
 
 }  // namespace elmasds::core

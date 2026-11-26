@@ -28,7 +28,7 @@ Status taxonomy:
 | `CpuBusInterface` & `ExceptionVector` | TESTED | Abstract bus boundary, `fetch16`/`fetch32`, `CoprocessorInterface`, unaligned rules, Reset..FIQ + ARM9 HIVECS |
 | ARM 32-bit decoder & executor (ARMv4T + ARMv5TE) | TESTED | ALU, MRS/MSR, MUL/MULL, CLZ/QADD/DSP mul, B/BL/BX/BLX, SWP, SWI, LDR/STR/LDRH/LDRD/LDM/STM |
 | Thumb 16-bit decoder & executor | TESTED | All 19 Thumb formats + BL/BLX + PUSH/POP + STMIA/LDMIA |
-| `Arm7Tdmi` & `Arm946Es` cores, CP15 & TCM | TESTED | `Arm7Tdmi`, `Arm946Es`, `Cp15SystemControl` (HIVECS/WFI), `TcmBusRouter` (32 KiB ITCM / 16 KiB DTCM), IRQ/FIQ |
+| `Arm7Tdmi` & `Arm946Es` cores, CP15 & TCM | TESTED | `Arm7Tdmi`, `Arm946Es`, `Cp15SystemControl` (HIVECS/WFI/MPU/cache-clean), `TcmBusRouter` (32 KiB ITCM / 16 KiB DTCM), IRQ/FIQ |
 
 ## Phase 2 — Memory & Bus
 
@@ -45,6 +45,7 @@ Status taxonomy:
 | Timers (4 per CPU, cascade & prescalers) | TESTED | `TM0..TM3`, prescalers `1/64/256/1024`, count-up cascades, drift-free `EventScheduler` overflow scheduling |
 | DMA controllers (ARM9 & ARM7) | TESTED | 4 channels per CPU, ARM9 `DMAxFILL`, 16/32-bit, Inc/Dec/Fixed/Reload, Repeat, Immediate/VBlank/HBlank/Cartridge/GXFIFO triggers |
 | IPC FIFO & IPCSYNC | TESTED | Bidirectional ARM9 <-> ARM7 `IPCSYNC` 4-bit handshake + dual 16-entry `IPCFIFO` with empty/full/error flags & IRQs |
+| ARM9 Hardware Math (`src/hardware/math/`) | TESTED | `DIVCNT`/`DIV_NUMER`/`DIV_DENOM`/`DIV_RESULT` (32/64-bit signed, overflow/zero) & `SQRTCNT`/`SQRT_PARAM`/`SQRT_RESULT` (32/64-bit) |
 | SPI & RTC (ARM7) | TESTED | `SPICNT`/`SPIDATA` (Powerman, Firmware Flash, TSC2046 Touchscreen ADC) & Seiko S-3511A serial BCD RTC (`0x04000138`) |
 
 ## Phase 4 — Cartridge & Boot
@@ -53,8 +54,8 @@ Status taxonomy:
 |---|---|---|
 | `.nds` ROM loader (`src/storage/rom_loader/`) | TESTED | Header (`0x000..0x1FF`) parser, header/logo CRC-16 validation, ARM9/ARM7 binary slicing, chip ID |
 | Save memory manager (`src/storage/save_manager/`) | TESTED | `EEPROM` (512B/8KB/64KB), `Flash` (256KB/512KB/1MB), `SRAM` (32KB), capacity auto-detection, deferred dirty disk flush |
-| Cartridge controller (`src/hardware/cartridge/`) | TESTED | `EXMEMCNT`/`EXMEMSTAT` slot arbitration, `AUXSPICNT`/`AUXSPIDATA`, `ROMCTRL`, `0x00`/`0x90`/`0xB8`/`0xB7`/`0x9F`, DMA trigger & IRQ |
-| Firmware/BIOS loader & Direct Boot (`src/core/emulator`) | TESTED | Optional external BIOS9/BIOS7/Firmware loading, direct `.nds` boot, dual-CPU `EventScheduler` execution |
+| Cartridge controller (`src/hardware/cartridge/`) | TESTED | `EXMEMCNT`/`EXMEMSTAT` slot arbitration, `AUXSPICNT`/`AUXSPIDATA`, `ROMCTRL`, `0x00`/`0x90`/`0xB8`/`0xB7`/`0x9F`, Repeat-DMA loop & IRQ |
+| Firmware/BIOS loader & Direct Boot (`src/core/emulator`) | TESTED | Optional external BIOS9/BIOS7/Firmware loading, post-BIOS RAM/CP15 setup, dual-CPU `EventScheduler` execution |
 
 ## Phase 5 — 2D Graphics Engines
 
@@ -67,7 +68,7 @@ Status taxonomy:
 
 | Component | Status | Notes |
 |---|---|---|
-| HLE BIOS (`src/cpu/bios_hle/`) | TESTED | ARM9/ARM7 `SWI` interception (`Div`, `Sqrt`, `CpuSet`, `CpuFastSet`, `GetCRC16`, `BitUnPack`, `LZ77UnComp`, `RLUnComp`, `IntrWait`, `VBlankIntrWait`, `WaitByLoop`) |
+| HLE BIOS (`src/cpu/bios_hle/`) | TESTED | Clean-room ARM9/ARM7 IRQ trampolines & `SWI` interception (`Div`, `Sqrt`, `CpuSet`, `CpuFastSet`, `GetCRC16`, `BitUnPack`, `LZ77UnComp`, `RLUnComp`, `IntrWait`, `VBlankIntrWait`, `WaitByLoop`) |
 | Keypad & Key Mapping (`src/input/`) | TESTED | `KEYINPUT` (`0x04000130`), `KEYCNT` (`0x04000132` OR/AND IRQ), `EXTKEYIN` (`0x04000136`), Section 13.1 defaults, conflict checks, config file load/save, stylus ADC transform |
 | 16-Channel Audio Engine (`src/audio/`) | TESTED | `SOUND0..15` (`0x04000400..0x040004FF`), `SOUNDCNT`, `SOUNDBIAS`, PCM8, PCM16, IMA-ADPCM, PSG square wave (ch 8-13), LFSR noise (ch 14-15), 32,768 Hz stereo mixer |
 
@@ -83,4 +84,4 @@ Status taxonomy:
 | Component | Status | Notes |
 |---|---|---|
 | Save States (`src/storage/save_states/`) | TESTED | Versioned `.ess` binary snapshots (magic `ELMASDSS`, ROM CRC verification, ARM9/ARM7 registers, CP15/TCM, Main RAM, WRAM, VRAM A-I, Palette, OAM, Keypad, Audio, GPU) |
-| Frontend & Release Packaging | TESTED | SDL3 + OpenGL 3.3 Core renderer, `SDL_AudioStream` playback, drag-and-drop / CLI ROM boot, `F5`/`F7` save states, `Space` pause, `Ctrl+R` reset, `F11` fullscreen; Debug & Release builds verified |
+| Frontend & Release Packaging | TESTED | SDL3 + OpenGL 3.3 Core renderer, `SDL_AudioStream` playback, drag-and-drop / CLI ROM boot, `--diag-frames` check, `F5`/`F7` save states, `Space` pause, `Ctrl+R` reset, `F11` fullscreen; 130/130 tests passing in Debug & Release |

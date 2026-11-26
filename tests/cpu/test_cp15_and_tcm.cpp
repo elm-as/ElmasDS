@@ -142,7 +142,7 @@ TEST(Cp15SystemControlTest, EnforcesPrivilegeAndRejectsUnsupportedTransfers) {
         {15U, 0U, 9U, 1U, 0U, false},  // User-mode c9
         {14U, 0U, 0U, 0U, 0U, true},   // Wrong coprocessor
         {15U, 1U, 1U, 0U, 0U, true},   // Unsupported op1 != 0
-        {15U, 0U, 2U, 0U, 0U, true},   // Unsupported CRn=2
+        {15U, 0U, 11U, 0U, 0U, true},  // Unsupported CRn=11
         {15U, 0U, 7U, 0U, 1U, true},   // Unsupported CRn=7 subop
         {15U, 0U, 9U, 1U, 2U, true},   // Unsupported CRn=9 op2
     };
@@ -181,6 +181,19 @@ TEST(Cp15SystemControlTest, HandlesWfiCacheNoOpsAndTcmSizeBounds) {
     EXPECT_TRUE(cp15.write_register({15U, 0U, 7U, 0U, 4U, true}, 0U));
     EXPECT_TRUE(cp15.consume_wfi_request());
     EXPECT_FALSE(cp15.consume_wfi_request());
+
+    // MPU CRn=2/3/5/6 round-trip and D-cache test-clean returns bit 30 (Z=1).
+    EXPECT_TRUE(cp15.write_register({15U, 0U, 2U, 0U, 0U, true}, 0xA5U));
+    EXPECT_TRUE(cp15.write_register({15U, 0U, 2U, 0U, 1U, true}, 0x5AU));
+    EXPECT_TRUE(cp15.write_register({15U, 0U, 3U, 0U, 0U, true}, 0x0FU));
+    EXPECT_TRUE(cp15.write_register({15U, 0U, 5U, 0U, 2U, true}, 0x12345678U));
+    EXPECT_TRUE(cp15.write_register({15U, 0U, 6U, 4U, 0U, true}, 0x0200002DU));
+    EXPECT_EQ(cp15.read_register({15U, 0U, 2U, 0U, 0U, true}), 0xA5U);
+    EXPECT_EQ(cp15.read_register({15U, 0U, 2U, 0U, 1U, true}), 0x5AU);
+    EXPECT_EQ(cp15.read_register({15U, 0U, 3U, 0U, 0U, true}), 0x0FU);
+    EXPECT_EQ(cp15.read_register({15U, 0U, 5U, 0U, 2U, true}), 0x12345678U);
+    EXPECT_EQ(cp15.read_register({15U, 0U, 6U, 4U, 0U, true}), 0x0200002DU);
+    EXPECT_EQ(cp15.read_register({15U, 0U, 7U, 14U, 3U, true}), 0x40000000U);
 
     // Virtual TCM size bounds: valid [3, 23] -> 4 KiB..4 GiB, out-of-range -> 0.
     configure_tcm_region(cp15, true, TcmWindow{0x00000000U, 3U, true, false});

@@ -266,7 +266,13 @@ void CartridgeController::start_rom_command(interrupts::CpuKind cpu) {
     dma::DmaController* dma_ctrl =
         (cpu == interrupts::CpuKind::Arm9) ? config_.arm9_dma : config_.arm7_dma;
     if (dma_ctrl != nullptr) {
-        dma_ctrl->trigger_cartridge();
+        while (transfer_words_remaining_ > 0U) {
+            const u32 before = transfer_words_remaining_;
+            dma_ctrl->trigger_cartridge();
+            if (transfer_words_remaining_ >= before) {
+                break;
+            }
+        }
     }
 }
 

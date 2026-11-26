@@ -3,6 +3,7 @@
 #include "cpu/arm_architecture/coprocessor_interface.hpp"
 #include "primitives/fixed_width_types.hpp"
 
+#include <array>
 #include <optional>
 
 namespace elmasds::cpu {
@@ -99,8 +100,19 @@ public:
 
 private:
     u32 control_register_ = kControlFixedOneMask;
+    u32 data_cacheable_ = 0U;
+    u32 inst_cacheable_ = 0U;
+    u32 data_bufferable_ = 0U;
+    u32 data_perm_ = 0U;
+    u32 inst_perm_ = 0U;
+    u32 data_perm_ext_ = 0U;
+    u32 inst_perm_ext_ = 0U;
+    std::array<u32, 8U> mpu_regions_{};
+    u32 data_lockdown_ = 0U;
+    u32 inst_lockdown_ = 0U;
     u32 dtcm_register_ = 0U;
     u32 itcm_register_ = 0U;
+    u32 trace_process_id_ = 0U;
     bool wfi_requested_ = false;
 };
 

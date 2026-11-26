@@ -40,6 +40,7 @@ add_library(
         hardware/spi/spi_devices.cpp
         hardware/spi/spi_controller.cpp
         hardware/rtc/rtc_controller.cpp
+        hardware/math/math_coprocessor.cpp
         hardware/cartridge/cartridge_controller.cpp
         storage/rom_loader/nds_rom.cpp
         storage/save_manager/save_memory.cpp

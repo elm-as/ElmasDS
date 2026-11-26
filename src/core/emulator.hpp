@@ -11,6 +11,7 @@
 #include "hardware/interrupts/interrupt_controller.hpp"
 #include "hardware/interrupts/system_control_mmio.hpp"
 #include "hardware/ipc/ipc_controller.hpp"
+#include "hardware/math/math_coprocessor.hpp"
 #include "hardware/rtc/rtc_controller.hpp"
 #include "hardware/spi/spi_controller.hpp"
 #include "hardware/timers/timer_controller.hpp"
@@ -162,6 +163,7 @@ private:
 
     void register_mmio_devices();
     void load_configured_system_images();
+    void populate_post_bios_memory(const storage::rom_loader::NdsRom& rom);
     [[nodiscard]] Status load_system_image_file(const SystemImageRequest& request);
     void report_load_status(std::string_view image_name, const Status& status);
     void step_cpu_slice(TickCount slice_ticks);
@@ -185,6 +187,7 @@ private:
     hardware::dma::DmaController arm9_dma_;
     hardware::dma::DmaController arm7_dma_;
     hardware::ipc::IpcController ipc_;
+    hardware::math::MathCoprocessor arm9_math_;
     hardware::spi::SpiController arm7_spi_;
     hardware::rtc::RtcController arm7_rtc_;
     hardware::cartridge::CartridgeController cartridge_;

@@ -18,6 +18,13 @@ Status BiosMemory::load(std::span<const u8> image) noexcept {
     return Status::ok();
 }
 
+void BiosMemory::install_hle_stub(std::span<const u8> image) noexcept {
+    std::fill(storage_.begin(), storage_.end(), u8{0});
+    const std::size_t count = std::min(image.size(), storage_.size());
+    std::copy_n(image.begin(), count, storage_.begin());
+    loaded_ = false;
+}
+
 void BiosMemory::clear() noexcept {
     std::fill(storage_.begin(), storage_.end(), u8{0});
     loaded_ = false;

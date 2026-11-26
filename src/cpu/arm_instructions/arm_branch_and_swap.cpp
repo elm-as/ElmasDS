@@ -66,8 +66,9 @@ ArmStepResult execute_arm_swap(ArmCoreContext& context, u32 opcode) {
 
 ArmStepResult execute_arm_swi(ArmCoreContext& context, u32 opcode, Address instruction_pc) {
     const u8 swi_number = static_cast<u8>(bits::extract_bits(opcode, 16U, 8U));
-    if (context.swi_handler.try_handle(context, swi_number)) {
-        return ArmStepResult{3U, false};
+    const SwiOutcome outcome = context.swi_handler.try_handle(context, swi_number);
+    if (outcome.handled) {
+        return ArmStepResult{3U, outcome.repeat_instruction};
     }
     raise_exception(context, CpuException::SoftwareInterrupt, instruction_pc);
     return ArmStepResult{3U, true};

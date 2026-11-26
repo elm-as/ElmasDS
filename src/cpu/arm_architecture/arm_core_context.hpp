@@ -16,18 +16,24 @@ namespace elmasds::cpu {
  */
 struct ArmCoreContext;
 
+struct SwiOutcome {
+    bool handled = false;
+    bool repeat_instruction = false;
+};
+
 /**
  * @brief Non-owning callback invoked on `SWI` before raising a hardware exception vector.
  *
- * Returns `true` when the software interrupt was handled in HLE mode (in which case the caller
- * advances `PC` past the `SWI` instruction without jumping to the exception vector).
+ * Returns `handled = true` when the software interrupt was handled in HLE mode; when
+ * `repeat_instruction` is `true` (e.g. `IntrWait` halting until an interrupt fires), the
+ * caller keeps `PC` on the `SWI` instruction so it re-evaluates upon IRQ return.
  */
 struct SwiHandler {
     void* context = nullptr;
-    bool (*invoke)(void* context, ArmCoreContext& core, u8 swi_number) = nullptr;
+    SwiOutcome (*invoke)(void* context, ArmCoreContext& core, u8 swi_number) = nullptr;
 
-    [[nodiscard]] bool try_handle(ArmCoreContext& core, u8 swi_number) const {
-        return (invoke != nullptr) && invoke(context, core, swi_number);
+    [[nodiscard]] SwiOutcome try_handle(ArmCoreContext& core, u8 swi_number) const {
+        return (invoke != nullptr) ? invoke(context, core, swi_number) : SwiOutcome{};
     }
 };
 
